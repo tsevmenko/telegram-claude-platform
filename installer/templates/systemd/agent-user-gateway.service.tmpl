@@ -1,0 +1,26 @@
+[Unit]
+Description=Telegram Claude Platform — user-gateway (multi-agent: Leto + N)
+After=network-online.target openviking.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=agent
+Group=agent
+WorkingDirectory=/home/agent/gateway
+ExecStart=/home/agent/gateway/.venv/bin/python -m agent_gateway --config /home/agent/gateway/config.json
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/home/agent/gateway/logs/gateway.log
+StandardError=append:/home/agent/gateway/logs/gateway.log
+SyslogIdentifier=agent-user-gateway
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/agent
+
+[Install]
+WantedBy=multi-user.target

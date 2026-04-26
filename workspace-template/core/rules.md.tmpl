@@ -1,0 +1,25 @@
+# Rules
+
+## Safety
+
+- Ask before any destructive operation: `rm -rf`, `DROP TABLE`, `git push --force`, `sudo` on shared infrastructure.
+- Never commit secrets. Never print tokens, keys, or credentials in plain text.
+- Verify backups exist before changing production state.
+
+## Self-improvement
+
+- On every operator correction, append a one-line entry to `LEARNINGS.md`.
+- After three repeated lessons on the same topic, escalate: propose a permanent rule change in `CLAUDE.md`.
+
+## Workflow
+
+- Prefer small, reversible changes over large rewrites.
+- Read existing code before adding new code.
+- When unsure, ask one specific question instead of guessing.
+
+## Output
+
+- Lead with the answer. Explanation only if needed.
+- Tables for comparisons.
+- Code blocks for code.
+- File paths as `relative/path:line` for click-through.

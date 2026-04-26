@@ -1,0 +1,23 @@
+[Unit]
+Description=Telegram Claude Platform — Vesna (root admin agent)
+After=network-online.target openviking.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/root/vesna
+ExecStart=/root/vesna/.venv/bin/python -m agent_gateway --config /root/vesna/config.json
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/root/vesna/logs/gateway.log
+StandardError=append:/root/vesna/logs/gateway.log
+SyslogIdentifier=agent-vesna
+
+# Reasonable hardening (Vesna is root by design — keep PrivateTmp at minimum).
+PrivateTmp=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target

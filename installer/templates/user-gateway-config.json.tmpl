@@ -1,0 +1,38 @@
+{
+  "poll_interval_sec": 2,
+  "allowed_user_ids": [{{TG_USER_ID}}],
+  "allowed_group_ids": [{{FORUM_GROUP_ID_OR_EMPTY}}],
+  "state_dir": "/home/agent/gateway/state",
+  "logs_dir": "/home/agent/gateway/logs",
+  "groq_api_key_file": "/home/agent/secrets/groq.key",
+  "voice_language": "{{VOICE_LANGUAGE}}",
+  "l4": {
+    "enabled": true,
+    "url": "http://127.0.0.1:1933",
+    "api_key_file": "/home/agent/secrets/openviking.key",
+    "account": "default"
+  },
+  "webhook": {
+    "enabled": true,
+    "listen_host": "0.0.0.0",
+    "listen_port": 8080,
+    "token_file": "/home/agent/secrets/webhook-token.txt"
+  },
+  "agents": {
+    "leto": {
+      "enabled": true,
+      "bot_token_file": "/home/agent/secrets/leto-bot-token",
+      "bot_username": "{{LETO_BOT_USERNAME}}",
+      "workspace": "/home/agent/.claude-lab/leto/.claude",
+      "model": "opus",
+      "timeout_sec": 300,
+      "streaming_mode": "progress",
+      "streaming_mode_private": "progress",
+      "streaming_mode_group": "off",
+      "system_reminder": "You are Leto, the operator's primary work agent. Be concise. Code first, prose after. You operate in the Main topic of the operator's forum group.",
+      "agent_names": ["leto"],
+      "topic_routing": {{TOPIC_ROUTING_LETO}},
+      "bypass_permissions": true
+    }
+  }
+}

@@ -1,0 +1,30 @@
+name: Installer tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  bats:
+    name: Bats tests on Ubuntu ${{ matrix.ubuntu }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        ubuntu: ["22.04", "24.04"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install bats
+        run: sudo apt-get install -y bats
+      - name: Run installer bats tests inside Docker
+        run: |
+          docker run --rm \
+            -v "$PWD:/workspace" \
+            -w /workspace \
+            ubuntu:${{ matrix.ubuntu }} \
+            bash -lc '
+              apt-get update -qq && apt-get install -y -qq bats jq curl > /dev/null
+              bats installer/tests/
+            '

@@ -1,0 +1,46 @@
+# Global CLAUDE.md
+
+Loaded into every Claude Code session running under user `{{USER}}`.
+
+## Operator
+
+- **Name:** {{OPERATOR_NAME}}
+- **Telegram user_id:** {{TG_USER_ID}}
+- **Language:** {{LANGUAGE}}
+- **Timezone:** {{TIMEZONE}}
+
+## Communication
+
+- Concise, direct. Code first, explanation after.
+- No emoji unless explicitly requested.
+- Truth over comfort. "I don't know" is acceptable; fabrication is not.
+
+## Workflow
+
+- For non-trivial tasks: plan before coding.
+- Verify before reporting "done". Type checks and tests verify code; manual verification verifies behaviour.
+- Three-strike rule for failing fixes — escalate to operator after the third failed attempt instead of looping.
+
+## Task Management
+
+- Use TodoWrite for multi-step work. Mark items complete as soon as they finish.
+- Surface blockers immediately; do not silently retry.
+
+## Git Policy
+
+- Branch names: `feature/<short>`, `fix/<short>`, `refactor/<short>`.
+- Commit messages: imperative, English, focus on the why.
+- Never `--force` push to main. Never rebase shared branches.
+- Never bypass hooks (`--no-verify`) unless explicitly authorised.
+
+## Security Rules
+
+- Never print secrets, API keys, OAuth tokens, or credentials in plain text.
+- `rm -rf`, `DROP TABLE`, force pushes — require explicit operator confirmation.
+- `sudo` on production infrastructure — explicit confirmation, even when allowed by sudoers.
+- Network-side: prefer outbound calls over opening new ports. New listening ports require justification.
+
+## Language Policy
+
+- Conversation with operator: {{LANGUAGE}}.
+- Source code, identifiers, code comments: English.

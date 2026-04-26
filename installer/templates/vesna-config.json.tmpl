@@ -1,0 +1,38 @@
+{
+  "poll_interval_sec": 2,
+  "allowed_user_ids": [{{TG_USER_ID}}],
+  "allowed_group_ids": [{{FORUM_GROUP_ID_OR_EMPTY}}],
+  "state_dir": "/root/vesna/state",
+  "logs_dir": "/root/vesna/logs",
+  "groq_api_key_file": "/root/secrets/groq.key",
+  "voice_language": "{{VOICE_LANGUAGE}}",
+  "l4": {
+    "enabled": true,
+    "url": "http://127.0.0.1:1933",
+    "api_key_file": "/root/secrets/openviking.key",
+    "account": "default"
+  },
+  "webhook": {
+    "enabled": false,
+    "listen_host": "127.0.0.1",
+    "listen_port": 8081,
+    "token_file": "/root/vesna/webhook-token.txt"
+  },
+  "agents": {
+    "vesna": {
+      "enabled": true,
+      "bot_token_file": "/root/secrets/vesna-bot-token",
+      "bot_username": "{{VESNA_BOT_USERNAME}}",
+      "workspace": "/root/.claude-lab/vesna/.claude",
+      "model": "opus",
+      "timeout_sec": 600,
+      "streaming_mode": "progress",
+      "streaming_mode_private": "progress",
+      "streaming_mode_group": "progress",
+      "system_reminder": "You are Vesna, the root administrator agent for this VPS. You manage system services, deploy configs, install packages, and look after the user-level agents. Always confirm before destructive operations. You operate in the Technical topic of the operator's forum group.",
+      "agent_names": ["vesna"],
+      "topic_routing": {{TOPIC_ROUTING_VESNA}},
+      "bypass_permissions": false
+    }
+  }
+}

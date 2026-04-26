@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+eggs/
+*.egg-info/
+.installed.cfg
+*.egg
+.venv/
+venv/
+ENV/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.ruff_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Project secrets — must never be committed
+secrets/
+*.key
+*.pem
+.env
+.env.local
+.env.*.local
+*.credentials.json
+webhook-token.txt
+
+# Runtime state
+state/
+logs/
+*.log
+*.pid
+
+# Build artefacts
+*.tar.gz
+*.whl
