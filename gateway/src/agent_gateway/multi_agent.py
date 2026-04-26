@@ -18,7 +18,10 @@ from agent_gateway.claude_cli.runner import ClaudeRunner
 from agent_gateway.claude_cli.session import SessionStore
 from agent_gateway.config import GatewayConfig
 from agent_gateway.consumer import AgentConsumer
+from aiogram.types import CallbackQuery
+
 from agent_gateway.memory.l4_openviking import L4OpenViking
+from agent_gateway.tg.buttons import CallbackDispatcher
 from agent_gateway.tg.producer import attach_to_dispatcher, build_router
 from agent_gateway.tg.voice import VoiceTranscriber
 from agent_gateway.tg.webhook_api import WebhookAPI
@@ -52,6 +55,8 @@ class MultiAgentGateway:
                 account=config.l4.account,
             )
 
+        self.callback_dispatcher = CallbackDispatcher()
+
     def setup(self) -> None:
         for name, agent_cfg in self.config.enabled_agents().items():
             token = agent_cfg.resolved_token()
@@ -81,6 +86,18 @@ class MultiAgentGateway:
 
         if not self.bots:
             raise RuntimeError("No enabled agents have a bot token. Nothing to run.")
+
+        # Single global callback handler — routes by prefix to whichever skill
+        # / module registered for that prefix.
+        @self.dispatcher.callback_query()
+        async def _on_callback(query: CallbackQuery) -> None:
+            # The bot instance is determined by which bot received the update;
+            # aiogram passes it via dispatcher state, but we just reuse the
+            # first bot for sending — buttons usually live in the same chat.
+            bot = self.bots[0] if self.bots else None
+            if bot is None:
+                return
+            await self.callback_dispatcher.dispatch(bot, query)
 
     async def run(self) -> None:
         for consumer in self.consumers.values():

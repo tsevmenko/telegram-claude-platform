@@ -20,6 +20,7 @@ from agent_gateway.config import AgentConfig
 from agent_gateway.memory.cold import context_bridge_preamble
 from agent_gateway.memory.hot import append_turn as hot_append_turn
 from agent_gateway.memory.l4_openviking import L4OpenViking
+from agent_gateway.tg.buttons import build_keyboard, extract_buttons
 from agent_gateway.tg.renderer import (
     EditRateLimiter,
     escape_html,
@@ -217,10 +218,18 @@ class AgentConsumer:
         if not final_text:
             await self._edit_status(status_msg, "(no output)")
             return
-        html_text = markdown_to_telegram_html(final_text)
+
+        # Detect inline button markers, strip them from the visible text.
+        cleaned, button_rows = extract_buttons(final_text)
+        keyboard = build_keyboard(button_rows)
+
+        html_text = markdown_to_telegram_html(cleaned)
         chunks = truncate_for_telegram(html_text)
 
         # Replace the live-status message with the first chunk of the answer.
+        # Buttons (if any) attach to the LAST chunk so the operator sees them
+        # at the bottom of a multi-part reply.
+        first_keyboard = keyboard if len(chunks) == 1 else None
         try:
             await self.bot.edit_message_text(
                 chat_id=status_msg.chat.id,
@@ -228,6 +237,7 @@ class AgentConsumer:
                 text=chunks[0],
                 parse_mode=ParseMode.HTML,
                 disable_web_page_preview=True,
+                reply_markup=first_keyboard,
             )
         except TelegramBadRequest:
             await self.bot.send_message(
@@ -236,15 +246,18 @@ class AgentConsumer:
                 text=chunks[0],
                 parse_mode=ParseMode.HTML,
                 disable_web_page_preview=True,
+                reply_markup=first_keyboard,
             )
 
-        for chunk in chunks[1:]:
+        for i, chunk in enumerate(chunks[1:], start=1):
+            is_last = i == len(chunks) - 1
             await self.bot.send_message(
                 chat_id=msg.chat_id,
                 message_thread_id=msg.thread_id,
                 text=chunk,
                 parse_mode=ParseMode.HTML,
                 disable_web_page_preview=True,
+                reply_markup=keyboard if is_last else None,
             )
 
     async def _replace_with_error(self, status_msg, detail: str) -> None:

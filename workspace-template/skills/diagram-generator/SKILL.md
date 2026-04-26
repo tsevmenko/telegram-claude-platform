@@ -29,12 +29,36 @@ Generates valid `.excalidraw` JSON files from a compact JSON spec. Works offline
   "type": "pipeline",
   "title": "Build pipeline",
   "stages": [
-    {"name": "lint", "blocks": ["ruff", "black", "mypy"], "color": "research"},
-    {"name": "test", "blocks": ["pytest", "bats"], "color": "analysis"},
-    {"name": "deploy", "blocks": ["build", "push"], "color": "final"}
+    {
+      "label": "lint",
+      "color": "research",
+      "blocks": [
+        {"text": "ruff"},
+        {"text": "black"},
+        {"text": "mypy"}
+      ]
+    },
+    {
+      "label": "test",
+      "color": "analysis",
+      "blocks": [
+        {"text": "pytest"},
+        {"text": "bats"}
+      ]
+    },
+    {
+      "label": "deploy",
+      "color": "final",
+      "blocks": [
+        {"text": "build"},
+        {"text": "push"}
+      ]
+    }
   ]
 }
 ```
+
+Each block is an object `{"text": "...", "color": "..."}`. The `color` key is optional — defaults to the stage's color, or `default` if neither is set.
 
 Colors: `research`, `analysis`, `review`, `final`, `factcheck`, `input`, `default`.
 

@@ -1,20 +1,36 @@
 #!/usr/bin/env python3
+"""Generate ``.excalidraw`` JSON files from a compact spec.
+
+Supported diagram types:
+- ``pipeline``  — vertical stages with rectangle blocks and arrows.
+- ``mindmap``   — radial layout from a centre node.
+- ``flowchart`` — explicit nodes + edges, with arbitrary positions.
+
+Spec is provided via ``--input <file>`` or piped on stdin as JSON. Output
+goes to ``--output <file>`` or stdout as ``.excalidraw`` JSON.
+
+Colours are keyed by category names (``research``, ``analysis``, ``final`` …)
+and resolved against the ``COLORS`` table below; unknown categories fall
+back to ``default``.
+"""
+
+from __future__ import annotations
+
 import argparse
 import json
 import math
 import random
 import sys
 import time
-from typing import Dict, List, Tuple
 
-COLORS = {
-    "research": {"background": "#e3f2fd", "stroke": "#1565c0"},
-    "analysis": {"background": "#ede7f6", "stroke": "#6a1b9a"},
-    "review": {"background": "#fff3e0", "stroke": "#e65100"},
-    "final": {"background": "#e8f5e9", "stroke": "#2e7d32"},
+COLORS: dict[str, dict[str, str]] = {
+    "research":  {"background": "#e3f2fd", "stroke": "#1565c0"},
+    "analysis":  {"background": "#ede7f6", "stroke": "#6a1b9a"},
+    "review":    {"background": "#fff3e0", "stroke": "#e65100"},
+    "final":     {"background": "#e8f5e9", "stroke": "#2e7d32"},
     "factcheck": {"background": "#e8f5e9", "stroke": "#2e7d32"},
-    "input": {"background": "#ffebee", "stroke": "#d32f2f"},
-    "default": {"background": "#f8f9fa", "stroke": "#495057"},
+    "input":     {"background": "#ffebee", "stroke": "#d32f2f"},
+    "default":   {"background": "#f8f9fa", "stroke": "#495057"},
 }
 
 ARROW_COLOR = "#495057"
@@ -36,7 +52,7 @@ def ex_id(prefix="el"):
     return f"{prefix}_{int(time.time()*1000)}_{random.randint(1000,9999)}"
 
 
-def text_size(text: str, base_w=220, line_h=26, pad=24) -> Tuple[int, int]:
+def text_size(text: str, base_w=220, line_h=26, pad=24) -> tuple[int, int]:
     lines = (text or "").split("\n")
     max_len = max((len(line) for line in lines), default=8)
     width = max(base_w, min(520, int(max_len * 11 + pad * 2)))
@@ -154,7 +170,7 @@ def color_of(name: str):
     return COLORS.get((name or "").lower(), COLORS["default"])
 
 
-def build_pipeline(schema: Dict) -> List[Dict]:
+def build_pipeline(schema: dict) -> list[dict]:
     els = []
     title = schema.get("title", "Pipeline")
     stages = schema.get("stages", [])
@@ -211,7 +227,7 @@ def build_pipeline(schema: Dict) -> List[Dict]:
     return els
 
 
-def build_mindmap(schema: Dict) -> List[Dict]:
+def build_mindmap(schema: dict) -> list[dict]:
     els = []
     title = schema.get("title", "Mind Map")
     nodes = schema.get("nodes", [])
@@ -236,7 +252,7 @@ def build_mindmap(schema: Dict) -> List[Dict]:
     return els
 
 
-def build_flowchart(schema: Dict) -> List[Dict]:
+def build_flowchart(schema: dict) -> list[dict]:
     els = []
     nodes = schema.get("nodes", [])
     edges = schema.get("edges", [])
@@ -268,7 +284,7 @@ def build_flowchart(schema: Dict) -> List[Dict]:
     return els
 
 
-def build(schema: Dict) -> Dict:
+def build(schema: dict) -> dict:
     kind = (schema.get("type") or "pipeline").lower()
     if kind == "pipeline":
         elements = build_pipeline(schema)
@@ -292,7 +308,7 @@ def build(schema: Dict) -> Dict:
     }
 
 
-def load_input(path: str = None) -> Dict:
+def load_input(path: str = None) -> dict:
     if path:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
