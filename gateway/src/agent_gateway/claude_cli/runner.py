@@ -79,9 +79,13 @@ class ClaudeRunner:
 
         try:
             try:
-                async for ev in asyncio.wait_for(
-                    _stream_with_timeout(parse_stream(_line_iter()), agent_cfg.timeout_sec),
-                    timeout=None,
+                # Iterate the timeout-wrapping async generator directly.
+                # Wrapping it in asyncio.wait_for() would coerce it into a
+                # coroutine, which breaks the `async for` protocol — the
+                # per-event timeout is already enforced inside
+                # _stream_with_timeout.
+                async for ev in _stream_with_timeout(
+                    parse_stream(_line_iter()), agent_cfg.timeout_sec
                 ):
                     yield ev
             except asyncio.TimeoutError:
