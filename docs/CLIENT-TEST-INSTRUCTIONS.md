@@ -5,7 +5,8 @@ Post-install verification. Run each test in **Telegram**, not on the VPS. Total 
 ## Before you start
 
 1. Confirm both bots are in your forum group.
-2. In the **Technical** topic, send Vesna `/status`. She replies with a health summary.
+2. **Promote both bots to admin** in the group (Group settings → Administrators → Add Admin → pick each bot). Default admin permissions are fine. This is required because Telegram caches Privacy Mode per-group at join time, and admin status is the cleanest way to bypass it.
+3. In the **Technical** topic, send Vesna `/status`. She replies with a health summary.
 
 If she doesn't, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 

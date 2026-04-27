@@ -11,8 +11,8 @@ WorkingDirectory=/home/agent/gateway
 ExecStart=/home/agent/gateway/.venv/bin/python -m agent_gateway --config /home/agent/gateway/config.json
 Restart=on-failure
 RestartSec=10
-StandardOutput=append:/home/agent/gateway/logs/gateway.log
-StandardError=append:/home/agent/gateway/logs/gateway.log
+StandardOutput=journal
+StandardError=journal
 SyslogIdentifier=agent-user-gateway
 
 # Hardening

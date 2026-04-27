@@ -11,8 +11,8 @@ WorkingDirectory=/root/vesna
 ExecStart=/root/vesna/.venv/bin/python -m agent_gateway --config /root/vesna/config.json
 Restart=on-failure
 RestartSec=10
-StandardOutput=append:/root/vesna/logs/gateway.log
-StandardError=append:/root/vesna/logs/gateway.log
+StandardOutput=journal
+StandardError=journal
 SyslogIdentifier=agent-vesna
 
 # Reasonable hardening (Vesna is root by design — keep PrivateTmp at minimum).

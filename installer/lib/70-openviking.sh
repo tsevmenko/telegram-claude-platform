@@ -123,8 +123,11 @@ install_lite() {
         as_user "$OV_USER" python3 -m venv "$OV_VENV" 2>/dev/null \
             || sudo -u "$OV_USER" -- python3 -m venv "$OV_VENV"
     fi
-    sudo -u "$OV_USER" -- "${OV_VENV}/bin/pip" install --upgrade pip --quiet
-    sudo -u "$OV_USER" -- "${OV_VENV}/bin/pip" install -e /opt/openviking-lite/source --quiet
+    # The openviking system user has no $HOME (--no-create-home), so pip cache
+    # would warn on every install. --no-cache-dir suppresses that and is
+    # appropriate for a one-shot install.
+    sudo -u "$OV_USER" -- "${OV_VENV}/bin/pip" install --upgrade pip --quiet --no-cache-dir
+    sudo -u "$OV_USER" -- "${OV_VENV}/bin/pip" install -e /opt/openviking-lite/source --quiet --no-cache-dir
 }
 
 deploy_systemd_unit() {

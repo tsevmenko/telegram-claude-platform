@@ -14,6 +14,7 @@
 | 8 | 2 Telegram bot tokens | `@BotFather` → `/newbot` × 2 | Vesna + Leto |
 | 9 | Telegram numeric user_id | `@userinfobot` → `/start` | Bot allowlist |
 | 10 | Forum group with 2 topics | Telegram → Group → Convert to forum | Main + Technical topics |
+| 10a | **Bots promoted to admin** in the forum group | Group settings → Administrators → Add Admin | Telegram caches Privacy Mode at the moment a bot joins a group; admin status bypasses that and lets the bot see all messages reliably |
 | 11 | Groq API key (recommended) | console.groq.com — free tier | Voice transcription |
 
 ## Run

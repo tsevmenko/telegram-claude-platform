@@ -16,9 +16,23 @@
 
 **Bot doesn't reply in private chat** — check the allowlist: `grep allowed_user_ids /home/agent/gateway/config.json`. If empty, anyone can talk to the bot; if it has IDs, your user_id must be in there.
 
-**Bot doesn't reply in the forum group** — two possible causes:
-1. Group ID isn't in `allowed_group_ids` (gateway config).
-2. The topic ID isn't routed to this agent. Either `@mention` the bot directly, or ask Vesna to route the topic.
+**Bot doesn't reply in the forum group** — usually one of these:
+1. **Bot isn't admin in the group.** This is the #1 cause: Telegram caches Privacy Mode per-group at join time, so toggling Privacy Mode in @BotFather doesn't affect bots already in groups. The fix is to **promote the bot to admin** (Group settings → Administrators → Add admin → choose bot). Admin bots see all messages regardless of Privacy Mode.
+2. Group ID isn't in `allowed_group_ids` — `grep allowed_group_ids /home/agent/gateway/config.json` should include your group's chat_id.
+3. The topic ID isn't routed to this agent. Either `@mention` the bot directly, or ask Vesna `/route_topic <topic_id> <agent>` to wire the topic.
+
+**Verify the bot can read messages** (definitive test):
+```bash
+# Stop the gateway briefly, fetch any pending updates
+sudo systemctl stop agent-vesna
+TOKEN=$(sudo cat /root/secrets/vesna-bot-token)
+# Now in Telegram, send any message in the group
+sleep 5
+curl -s "https://api.telegram.org/bot${TOKEN}/getUpdates" | python3 -m json.tool
+sudo systemctl start agent-vesna
+```
+- Empty `result: []` → bot isn't seeing messages → make it admin.
+- Has `result: [{message: ...}]` → Telegram delivers, gateway should be processing — check `journalctl -u agent-vesna`.
 
 **Live status updates stopped after a few seconds** — Telegram rate-limits `editMessageText` to ~1 per second per chat. The renderer throttles to one edit per 1.5s. If you still see it stalling, the agent may be blocked on a tool call (Bash subprocess hung). `/stop` clears it.
 
@@ -45,11 +59,14 @@
 ## Useful commands
 
 ```bash
-# Real-time logs for both gateways
+# Real-time logs for both gateways (logs go to journald)
 sudo journalctl -u agent-vesna -u agent-user-gateway -f
 
 # Last hour of errors only
 sudo journalctl -u agent-vesna -u agent-user-gateway --since '1 hour ago' | grep -iE 'error|fail|traceback'
+
+# OpenViking-lite logs
+sudo journalctl -u openviking -f
 
 # Verify config parses
 sudo -u agent /home/agent/gateway/.venv/bin/python -c \

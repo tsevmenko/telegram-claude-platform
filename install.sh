@@ -194,7 +194,10 @@ run_step() {
         die "Step script missing: $script"
     fi
 
-    if state_step_done "$step"; then
+    # The self-check is ALWAYS rerun, even on idempotent re-installs — its
+    # whole job is to surface the current state of the system. Skipping it
+    # would hide newly-fixed (or newly-broken) issues from the operator.
+    if [[ "$step" != "99-self-check" ]] && state_step_done "$step"; then
         log "Step ${step} already completed — skipping."
         return 0
     fi
@@ -209,7 +212,10 @@ run_step() {
         die "Step ${step} did not define step_main()"
     fi
     if step_main; then
-        state_mark_done "$step"
+        # Self-check is intentionally NOT marked done — it must always rerun.
+        if [[ "$step" != "99-self-check" ]]; then
+            state_mark_done "$step"
+        fi
         ok "Step ${step} complete."
     else
         die "Step ${step} failed. See ${LOG_FILE}."

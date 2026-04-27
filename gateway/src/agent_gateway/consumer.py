@@ -90,7 +90,12 @@ class AgentConsumer:
             return
 
         sid, new_session = self.sessions.get_or_create(self.name, msg.chat_id)
-        log.info("[%s] chat=%s sid=%s new=%s", self.name, msg.chat_id, sid, new_session)
+        # Always log thread_id — this is how the operator (or Vesna admin) can
+        # discover topic IDs without resorting to Telegram Desktop / web URL.
+        log.info(
+            "[%s] chat=%s thread=%s sid=%s new=%s",
+            self.name, msg.chat_id, msg.thread_id, sid, new_session,
+        )
 
         # On a fresh session, prepend a context bridge from the most recent
         # COLD memory section so /reset doesn't mean total amnesia.
