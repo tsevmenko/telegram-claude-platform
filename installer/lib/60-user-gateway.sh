@@ -13,14 +13,14 @@ step_main() {
     deploy_user_gateway_code
     plant_workspace agent "$LETO_WORKSPACE" "leto" \
         "operator's primary work agent" \
-        "${OPERATOR_NAME:-operator}" "${OPERATOR_LANGUAGE:-English}" "${OPERATOR_TIMEZONE:-UTC}"
+        "${OPERATOR_NAME:-operator}" "${OPERATOR_LANGUAGE:-English}" "${OPERATOR_TIMEZONE:-Europe/Kyiv}"
 
     install_global_claude_dir agent "$AGENT_GLOBAL_CLAUDE" \
         "${LETO_WORKSPACE}/hooks" \
         "${OPERATOR_NAME:-operator}" \
         "${TG_USER_ID:-0}" \
         "${OPERATOR_LANGUAGE:-English}" \
-        "${OPERATOR_TIMEZONE:-UTC}"
+        "${OPERATOR_TIMEZONE:-Europe/Kyiv}"
 
     render_user_gateway_config
     deploy_systemd_unit

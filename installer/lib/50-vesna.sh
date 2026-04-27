@@ -13,14 +13,14 @@ step_main() {
 
     plant_workspace root "$VESNA_WORKSPACE" "vesna" \
         "VPS administrator agent" \
-        "${OPERATOR_NAME:-operator}" "${OPERATOR_LANGUAGE:-English}" "${OPERATOR_TIMEZONE:-UTC}"
+        "${OPERATOR_NAME:-operator}" "${OPERATOR_LANGUAGE:-English}" "${OPERATOR_TIMEZONE:-Europe/Kyiv}"
 
     install_global_claude_dir root "$VESNA_GLOBAL_CLAUDE" \
         "${VESNA_WORKSPACE}/hooks" \
         "${OPERATOR_NAME:-operator}" \
         "${TG_USER_ID:-0}" \
         "${OPERATOR_LANGUAGE:-English}" \
-        "${OPERATOR_TIMEZONE:-UTC}"
+        "${OPERATOR_TIMEZONE:-Europe/Kyiv}"
 
     deploy_admin_skill
 
@@ -31,14 +31,25 @@ step_main() {
     ok "Vesna deployed at ${VESNA_DIR}"
 }
 
-# Resolve operator profile values from environment with sensible fallbacks.
+# Resolve operator profile values. Priority order:
+#   1. Already-exported env var (set by step 40 collect_operator_profile)
+#   2. Staged file from step 40 (/var/lib/agent-installer/secrets/operator-*)
+#   3. Hard-coded sensible defaults
 load_operator_profile() {
-    OPERATOR_NAME="${OPERATOR_NAME:-${EDGELAB_USER_NAME:-operator}}"
-    OPERATOR_LANGUAGE="${OPERATOR_LANGUAGE:-${EDGELAB_LANGUAGE:-English}}"
-    OPERATOR_TIMEZONE="${OPERATOR_TIMEZONE:-${EDGELAB_TIMEZONE:-UTC}}"
-    TG_USER_ID="${TG_USER_ID:-$(cat "${SECRETS_STAGING_DIR:-/var/lib/agent-installer/secrets}/operator-user-id" 2>/dev/null || echo 0)}"
-    VOICE_LANGUAGE="${VOICE_LANGUAGE:-en}"
-    [[ "${OPERATOR_LANGUAGE,,}" == "russian" ]] && VOICE_LANGUAGE="ru"
+    local staging="${SECRETS_STAGING_DIR:-/var/lib/agent-installer/secrets}"
+    OPERATOR_NAME="${OPERATOR_NAME:-$(cat "${staging}/operator-name"     2>/dev/null || echo operator)}"
+    OPERATOR_LANGUAGE="${OPERATOR_LANGUAGE:-$(cat "${staging}/operator-language" 2>/dev/null || echo English)}"
+    OPERATOR_TIMEZONE="${OPERATOR_TIMEZONE:-$(cat "${staging}/operator-timezone" 2>/dev/null || echo Europe/Kyiv)}"
+    TG_USER_ID="${TG_USER_ID:-$(cat "${staging}/operator-user-id" 2>/dev/null || echo 0)}"
+
+    # Voice transcription language is derived from the operator's language.
+    # Whisper expects ISO 639-1 codes (en, uk, ru, de, fr, ...).
+    case "${OPERATOR_LANGUAGE,,}" in
+        ukrainian|українська) VOICE_LANGUAGE="uk" ;;
+        russian|русский|русская) VOICE_LANGUAGE="ru" ;;
+        english|en|英语) VOICE_LANGUAGE="en" ;;
+        *) VOICE_LANGUAGE="${VOICE_LANGUAGE:-en}" ;;
+    esac
 }
 
 deploy_gateway_code() {

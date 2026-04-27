@@ -26,7 +26,7 @@
 
 ## OAuth
 
-**`claude login` shows 'no internet'** — check that the VPS has outbound HTTPS to `claude.ai`. From RU IPs the OAuth flow itself runs from the VPS but the browser portion needs a non-RU IP — open the link from a machine with a VPN.
+**`claude login` shows 'no internet'** — check that the VPS has outbound HTTPS to `claude.ai`. If your IP is in a region where Anthropic OAuth is restricted, the VPS-side flow runs fine but the browser-side authorization step needs a non-restricted IP — open the URL from a machine on a VPN.
 
 **OAuth expired mid-session** — `~/.claude/.credentials.json` has a refresh token that auto-renews; if renewal fails (revoked from claude.com, etc.) you'll see 401s. Re-run `claude login` for that user.
 

@@ -9,7 +9,7 @@
 | 3 | Cursor / VSCode + Remote-SSH | cursor.com / code.visualstudio.com | Convenient SSH with file editor |
 | 4 | Anthropic Max or Pro | claude.com/pricing | Required for `claude login` OAuth |
 | 5 | Gmail for Anthropic | existing or new | Anthropic login |
-| 6 | EU IP via VPN (RU users only) | any VPN | Anthropic OAuth blocks RU IPs |
+| 6 | VPN if your IP is in a sanctioned region | any reputable VPN | Anthropic OAuth restricts certain regions — needed only for the browser-side step of `claude login` |
 | 7 | Telegram on phone | already installed | Bot creation + user_id lookup |
 | 8 | 2 Telegram bot tokens | `@BotFather` → `/newbot` × 2 | Vesna + Leto |
 | 9 | Telegram numeric user_id | `@userinfobot` → `/start` | Bot allowlist |

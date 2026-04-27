@@ -23,15 +23,19 @@ step_main() {
     if ! is_noninteractive; then
         cat <<'BRIEF'
 
-Token collection.
+Operator profile + token collection.
 
 You'll be asked for:
-  1. Vesna bot token       (root admin agent)
-  2. Leto bot token        (first user-level chat agent)
-  3. Operator user_id      (your numeric Telegram id)
-  4. Anthropic API key     (optional — skip to use OAuth via 'claude login')
-  5. Groq API key          (optional — needed for voice transcription)
-  6. Forum group id        (optional — can be configured later via Vesna)
+  1. Operator name         (how the agents address you)
+  2. Operator language     (English / Ukrainian / Russian / ...)
+  3. Operator timezone     (IANA, e.g. Europe/Kyiv)
+  4. Vesna bot token       (root admin agent)
+  5. Leto bot token        (first user-level chat agent)
+  6. Operator user_id      (your numeric Telegram id)
+  7. Anthropic API key     (optional — skip to use OAuth via 'claude login')
+  8. Groq API key          (optional — needed for voice transcription)
+  9. OpenAI API key        (optional — for L4 semantic embeddings, $5+ balance)
+  10. Forum group id       (optional — can be configured later via Vesna)
 
 Each Telegram bot token is verified via api.telegram.org/getMe.
 If a token is invalid, you can retry or skip (with a warning).
@@ -40,6 +44,7 @@ Tokens are NOT echoed to the terminal.
 BRIEF
     fi
 
+    collect_operator_profile
     collect_bot_token "Vesna" "VESNA_BOT_TOKEN" "vesna"
     collect_bot_token "Leto"  "LETO_BOT_TOKEN"  "leto"
     collect_operator_id
@@ -56,6 +61,31 @@ BRIEF
 }
 
 # ----------------------------------------------------------------------------
+
+# collect_operator_profile
+# Asks for operator name, language, timezone. Stores values in
+# ${SECRETS_STAGING_DIR}/operator-* so subsequent steps can pick them up.
+# Defaults: name=operator, language=English, timezone=Europe/Kyiv.
+collect_operator_profile() {
+    local name="" language="" timezone=""
+    prompt_or_env name      OPERATOR_NAME     "Operator name (how should the agents address you)" \
+        "operator"
+    prompt_or_env language  OPERATOR_LANGUAGE "Operator language (English / Ukrainian / Russian / ...)" \
+        "English"
+    prompt_or_env timezone  OPERATOR_TIMEZONE "Operator timezone (IANA, e.g. Europe/Kyiv, America/New_York, Asia/Singapore)" \
+        "Europe/Kyiv"
+
+    install -m 0644 -o root -g root /dev/stdin "${SECRETS_STAGING_DIR}/operator-name"     <<<"$name"
+    install -m 0644 -o root -g root /dev/stdin "${SECRETS_STAGING_DIR}/operator-language" <<<"$language"
+    install -m 0644 -o root -g root /dev/stdin "${SECRETS_STAGING_DIR}/operator-timezone" <<<"$timezone"
+
+    # Export so the rest of step 40 (and subsequent steps) see the values.
+    export OPERATOR_NAME="$name"
+    export OPERATOR_LANGUAGE="$language"
+    export OPERATOR_TIMEZONE="$timezone"
+
+    ok "Profile: name=${name}, lang=${language}, tz=${timezone}"
+}
 
 # collect_bot_token PRETTY_NAME ENV_NAME OUTPUT_PREFIX
 # Prompts (or reads from env), validates format, calls getMe to verify token.
