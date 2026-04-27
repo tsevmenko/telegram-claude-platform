@@ -40,6 +40,7 @@ else
         40-secrets
         70-openviking
         50-vesna
+        55-plugins
         60-user-gateway
         85-cron
         90-webhook-token

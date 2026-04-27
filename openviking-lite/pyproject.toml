@@ -22,6 +22,7 @@ dev = [
 
 [project.scripts]
 openviking-lite = "openviking_lite.__main__:main"
+openviking-lite-mcp = "openviking_lite.mcp_server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

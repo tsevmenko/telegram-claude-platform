@@ -137,6 +137,7 @@ plant_workspace() {
         "${ws}/core/warm" \
         "${ws}/core/hot" \
         "${ws}/core/archive" \
+        "${ws}/tools" \
         "${ws}/skills" \
         "${ws}/scripts" \
         "${ws}/hooks" \
@@ -172,7 +173,12 @@ plant_workspace() {
     install -m 0644 -o "$owner" -g "$owner" "$tmp" "${ws}/core/rules.md"
 
     # Static seed files (idempotent: only write if missing).
-    for src_rel in core/MEMORY.md core/LEARNINGS.md core/warm/decisions.md core/hot/recent.md core/hot/handoff.md; do
+    for src_rel in \
+        core/MEMORY.md core/LEARNINGS.md \
+        core/AGENTS.md \
+        core/warm/decisions.md core/hot/recent.md core/hot/handoff.md \
+        tools/TOOLS.md
+    do
         local src="${tpl_root}/${src_rel}"
         local dst="${ws}/${src_rel}"
         if [[ ! -f "$dst" && -f "$src" ]]; then

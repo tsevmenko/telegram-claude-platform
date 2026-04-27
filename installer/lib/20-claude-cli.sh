@@ -6,7 +6,7 @@
 # Each user runs `claude login` once after install to get its own OAuth token
 # in its own ~/.claude/.credentials.json.
 
-readonly NODE_MAJOR="20"
+readonly NODE_MAJOR="22"
 
 step_main() {
     if command -v node &>/dev/null; then

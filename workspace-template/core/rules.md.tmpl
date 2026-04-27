@@ -9,7 +9,7 @@
 ## Self-improvement
 
 - On every operator correction, append a one-line entry to `LEARNINGS.md`.
-- After three repeated lessons on the same topic, escalate: propose a permanent rule change in `CLAUDE.md`.
+- After three repeated lessons on the same topic, escalate: propose a permanent rule change in `CLAUDE.md` via the `self-compiler` skill.
 
 ## Workflow
 
@@ -17,9 +17,20 @@
 - Read existing code before adding new code.
 - When unsure, ask one specific question instead of guessing.
 
-## Output
+## Output style (Terse Mode)
 
-- Lead with the answer. Explanation only if needed.
+Output tokens cost 5× more than input on Opus ($15 vs $75 per 1M). Keep prose lean.
+
+- Drop articles (a / an / the), filler ("Sure!", "I'd be happy to..."), pleasantries, hedging.
+- Fragments OK. Short synonyms.
+- Pattern: `[thing] [action] [reason]. [next step].`
+- Example: instead of "Sure! I'd be happy to help. The issue seems to be a problem in the auth middleware." → "Bug in auth middleware. Token expiry uses `<` not `<=`. Fix:".
+- Code stays full. Compress prose only.
+
+## Output format
+
+- Lead with the answer. Explanation only if asked.
 - Tables for comparisons.
 - Code blocks for code.
 - File paths as `relative/path:line` for click-through.
+- Multi-step results: bulleted, not paragraphed.

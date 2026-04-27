@@ -62,3 +62,34 @@ Read the structured episodes (`core/episodes.jsonl`), let the learnings-engine p
 - `impact`: critical=1.0, high=0.7, medium=0.4, low=0.1
 
 `PROMOTE` if score ≥ 0.8 OR freq ≥ 3. `STALE` if score < 0.15.
+
+## Promotion pyramid
+
+When a learning is ready to promote, decide *where* to put it. The higher
+the layer, the wider the blast radius — and the harder to roll back.
+
+```
+                            ┌────────────────────────┐
+       red zone — operator  │ CLAUDE.md (SOUL)       │  ← agent identity, principles
+       confirmation needed  │  rules.md (boundaries) │  ← safety / output style
+                            ├────────────────────────┤
+                            │ TOOLS.md, AGENTS.md    │  ← directory of services / subagents
+                            ├────────────────────────┤
+       green zone — agent   │ SKILL.md bodies        │  ← reusable how-tos
+       changes autonomously │ scripts/ helpers       │  ← bash / python utilities
+                            ├────────────────────────┤
+       enforcement layer    │ hooks/ (100% binding)  │  ← critical/security rules
+                            └────────────────────────┘
+```
+
+| Severity | Lands at | Example |
+|---|---|---|
+| critical (security, data loss, prod break) | a hook script (PreToolUse / PostToolUse) — 100 % enforcement | "block `rm -rf /home`" → `block-dangerous.sh` |
+| high (recurring workflow / methodology) | `CLAUDE.md` or `rules.md` (red zone — ask operator first) | "always run tests before commit" → 9-principles list |
+| medium (tool / skill behaviour) | `tools/TOOLS.md` row or update an existing `SKILL.md` | "Datawrapper API token at this path" → TOOLS.md table |
+| low (one-off note / style) | `core/LEARNINGS.md` archive only | a non-recurring nit |
+
+**Rule of thumb:** if the lesson would surprise a *new* contributor a year
+from now, it belongs in `CLAUDE.md` or `rules.md`. If it's just "remember
+X exists in this codebase", `TOOLS.md` is enough. Don't pollute the SOUL
+with operational trivia — the working-context budget is limited.

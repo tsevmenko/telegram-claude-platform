@@ -11,7 +11,8 @@ if [ -z "$CMD" ]; then
 fi
 
 DANGEROUS=(
-    'rm -rf /[^a-zA-Z]'
+    'rm -rf /([[:space:]]|$)'                                          # bare 'rm -rf /'
+    'rm -rf /(etc|usr|var|bin|sbin|lib|opt|root|boot|sys|proc|home)\b'  # system dirs
     'rm -rf ~'
     'rm -rf \$HOME'
     'mkfs'

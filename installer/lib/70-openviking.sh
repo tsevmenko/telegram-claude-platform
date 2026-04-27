@@ -69,7 +69,46 @@ step_main() {
     log "No 'openviking' binary found — installing the bundled openviking-lite."
     install_lite
     deploy_systemd_unit "${OV_VENV}/bin/openviking-lite"
+    register_mcp_for root  /root/.claude/mcp.json
+    register_mcp_for agent /home/agent/.claude/mcp.json
     ok "OpenViking-lite deployed (loopback 127.0.0.1:${OV_PORT})."
+}
+
+# register_mcp_for USER MCP_JSON_PATH
+# Adds an "openviking" MCP server entry pointing at openviking-lite-mcp.
+register_mcp_for() {
+    local user="$1" mcp_path="$2"
+    local mcp_dir; mcp_dir="$(dirname "$mcp_path")"
+    install -d -m 0700 -o "$user" -g "$user" "$mcp_dir"
+
+    local exec="${OV_VENV}/bin/openviking-lite-mcp"
+    [[ -x "$exec" ]] || { warn "MCP exec missing at ${exec}"; return 0; }
+
+    local tmp; tmp="$(mktemp)"; TMPFILES+=("$tmp")
+    if [[ -f "$mcp_path" ]]; then
+        if jq --arg cmd "$exec" --arg key "$OV_KEY_FILE" \
+              '.mcpServers = ((.mcpServers // {}) +
+                  {"openviking": {"command": $cmd, "args": [],
+                                  "env": {"OV_HOST": "http://127.0.0.1:1933",
+                                          "OV_KEY_FILE": $key,
+                                          "OV_ACCOUNT": "default"}}})' \
+              "$mcp_path" >"$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
+            install -m 0644 -o "$user" -g "$user" "$tmp" "$mcp_path"
+            log "Registered openviking MCP for ${user} → ${mcp_path}"
+        else
+            warn "jq merge of ${mcp_path} failed; leaving file alone."
+        fi
+    else
+        if jq -n --arg cmd "$exec" --arg key "$OV_KEY_FILE" \
+                '{mcpServers: {openviking: {command: $cmd, args: [],
+                                            env: {OV_HOST: "http://127.0.0.1:1933",
+                                                  OV_KEY_FILE: $key,
+                                                  OV_ACCOUNT: "default"}}}}' >"$tmp" 2>/dev/null \
+                && [[ -s "$tmp" ]]; then
+            install -m 0644 -o "$user" -g "$user" "$tmp" "$mcp_path"
+            log "Created MCP config for ${user} at ${mcp_path}"
+        fi
+    fi
 }
 
 install_lite() {

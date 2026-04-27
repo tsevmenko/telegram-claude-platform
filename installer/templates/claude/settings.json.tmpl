@@ -22,6 +22,35 @@
     ]
   },
   "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{HOOKS_DIR}}/session-bootstrap.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{HOOKS_DIR}}/auto-recall.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "{{HOOKS_DIR}}/correction-detector.sh",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash",
@@ -44,18 +73,6 @@
         ]
       }
     ],
-    "UserPromptSubmit": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "{{HOOKS_DIR}}/correction-detector.sh",
-            "timeout": 3
-          }
-        ]
-      }
-    ],
     "PostToolUse": [
       {
         "matcher": "",
@@ -64,6 +81,33 @@
             "type": "command",
             "command": "{{HOOKS_DIR}}/activity-logger.sh",
             "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{HOOKS_DIR}}/review-reminder.sh",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{HOOKS_DIR}}/flush-to-openviking.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "{{HOOKS_DIR}}/compact-notify.sh",
+            "timeout": 3
           }
         ]
       }
@@ -76,6 +120,16 @@
             "type": "command",
             "command": "{{HOOKS_DIR}}/write-handoff.sh",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "{{HOOKS_DIR}}/auto-capture.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "{{HOOKS_DIR}}/close-heartbeat.sh",
+            "timeout": 3
           }
         ]
       }
