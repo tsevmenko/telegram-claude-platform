@@ -39,6 +39,8 @@ step_main() {
 
     install -d -m 0700 -o root  -g root  /root/secrets
     install -d -m 0700 -o agent -g agent /home/agent/secrets
+    install -d -m 0755 -o root  -g root  /root/.claude-lab/shared
+    install -d -m 0755 -o root  -g root  /root/.claude-lab/shared/secrets
     install -d -m 0755 -o agent -g agent /home/agent/.claude-lab/shared/secrets
 
     # Copy the key (not symlink!) so each user can read it as their own.
@@ -49,6 +51,7 @@ step_main() {
     # POSIX-clean. If Vesna regenerates the key, her admin tool must
     # re-distribute these copies.
     install -m 0600 -o root  -g root  "$OV_KEY_FILE" /root/secrets/openviking.key
+    install -m 0600 -o root  -g root  "$OV_KEY_FILE" /root/.claude-lab/shared/secrets/openviking.key
     install -m 0600 -o agent -g agent "$OV_KEY_FILE" /home/agent/secrets/openviking.key
     install -m 0600 -o agent -g agent "$OV_KEY_FILE" /home/agent/.claude-lab/shared/secrets/openviking.key
 
