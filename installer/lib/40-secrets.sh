@@ -47,6 +47,8 @@ BRIEF
         "ANTHROPIC_API_KEY" "anthropic-api-key"
     collect_optional_api_key "Groq API key (for voice transcription)" \
         "GROQ_API_KEY" "groq-api-key"
+    collect_optional_api_key "OpenAI API key (for L4 semantic embeddings — strongly recommended; \$5+ balance)" \
+        "OPENAI_API_KEY" "openai-api-key"
     collect_optional_value "Forum group id (Telegram supergroup with topics)" \
         "FORUM_GROUP_ID" "forum-group-id" "validate_int_or_neg"
 

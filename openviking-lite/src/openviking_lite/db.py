@@ -57,6 +57,20 @@ CREATE VIRTUAL TABLE IF NOT EXISTS resources USING fts5(
     updated_at UNINDEXED,
     tokenize = 'porter unicode61'
 );
+
+CREATE TABLE IF NOT EXISTS embeddings (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind       TEXT NOT NULL,        -- 'message' or 'resource'
+    ref_id     TEXT NOT NULL,        -- "<session_id>:<seq>" for messages, uri for resources
+    account    TEXT NOT NULL,
+    content    TEXT NOT NULL,
+    vector     BLOB NOT NULL,
+    updated_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_embeddings_kind_account
+    ON embeddings(kind, account);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_embeddings_unique
+    ON embeddings(kind, ref_id);
 """
 
 
@@ -110,12 +124,14 @@ class DB:
     # Messages
     # ------------------------------------------------------------------
 
-    def add_message(self, sid: str, role: str, content: str, meta: str = "") -> None:
+    def add_message(self, sid: str, role: str, content: str, meta: str = "") -> int:
+        """Append a message and return its FTS5 rowid (for embedding ref_id)."""
         with self._lock, self._connect() as conn:
-            conn.execute(
+            cur = conn.execute(
                 "INSERT INTO messages (session_id, role, content, meta) VALUES (?, ?, ?, ?)",
                 (sid, role, content, meta),
             )
+            return int(cur.lastrowid or 0)
 
     def search_messages(self, query: str, limit: int = 20) -> list[dict[str, Any]]:
         with self._connect() as conn:
@@ -206,3 +222,48 @@ class DB:
                     "SELECT uri, account, updated_at FROM resources"
                 ).fetchall()
         return [dict(r) for r in rows]
+
+    # ------------------------------------------------------------------
+    # Embeddings (semantic search backing store)
+    # ------------------------------------------------------------------
+
+    def upsert_embedding(self, kind: str, ref_id: str, account: str,
+                         content: str, vector_bytes: bytes) -> None:
+        """Insert or replace an embedding row."""
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                "DELETE FROM embeddings WHERE kind = ? AND ref_id = ?",
+                (kind, ref_id),
+            )
+            conn.execute(
+                "INSERT INTO embeddings (kind, ref_id, account, content, vector, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (kind, ref_id, account, content, vector_bytes, time.time()),
+            )
+
+    def candidate_embeddings(
+        self,
+        *,
+        kind: str | None = None,
+        account: str | None = None,
+        limit: int | None = None,
+    ) -> list[tuple[str, bytes, str]]:
+        """Return ``(ref_id, vector_blob, content)`` tuples for cosine scoring."""
+        clauses = []
+        params: list[Any] = []
+        if kind:
+            clauses.append("kind = ?"); params.append(kind)
+        if account:
+            clauses.append("account = ?"); params.append(account)
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        sql = f"SELECT ref_id, vector, content FROM embeddings{where}"
+        if limit:
+            sql += " LIMIT ?"; params.append(int(limit))
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [(r["ref_id"], r["vector"], r["content"]) for r in rows]
+
+    def count_embeddings(self) -> int:
+        with self._connect() as conn:
+            row = conn.execute("SELECT COUNT(*) AS n FROM embeddings").fetchone()
+        return int(row["n"])

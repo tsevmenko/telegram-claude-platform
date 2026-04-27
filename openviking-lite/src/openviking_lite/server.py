@@ -26,14 +26,20 @@ from pathlib import Path
 from aiohttp import web
 
 from openviking_lite.db import DB
+from openviking_lite.embeddings import EmbeddingProvider, encode, topk_brute
 
 log = logging.getLogger(__name__)
 
 
-def build_app(db: DB, api_key: str) -> web.Application:
+def build_app(
+    db: DB,
+    api_key: str,
+    embedding_provider: EmbeddingProvider | None = None,
+) -> web.Application:
     app = web.Application(client_max_size=50 * 1024 * 1024)
     app["db"] = db
     app["api_key"] = api_key
+    app["embed"] = embedding_provider
 
     app.middlewares.append(_auth_middleware)
 
@@ -86,6 +92,8 @@ async def _handle_create_session(request: web.Request) -> web.Response:
 
 async def _handle_add_message(request: web.Request) -> web.Response:
     db: DB = request.app["db"]
+    embed: EmbeddingProvider | None = request.app["embed"]
+    account = request.headers.get("X-OpenViking-Account", "default")
     sid = request.match_info["sid"]
     if not await asyncio.to_thread(db.session_exists, sid):
         return web.json_response({"error": "unknown session"}, status=404)
@@ -98,7 +106,14 @@ async def _handle_add_message(request: web.Request) -> web.Response:
     meta = body.get("meta", "")
     if not content:
         return web.json_response({"error": "missing content"}, status=400)
-    await asyncio.to_thread(db.add_message, sid, role, content, str(meta))
+    rowid = await asyncio.to_thread(db.add_message, sid, role, content, str(meta))
+
+    if embed and embed.configured:
+        vec = await embed.embed(content)
+        if vec:
+            await asyncio.to_thread(
+                db.upsert_embedding, "message", f"{sid}:{rowid}", account, content, encode(vec)
+            )
     return web.json_response({"result": "ok"})
 
 
@@ -168,6 +183,14 @@ async def _handle_resource(request: web.Request) -> web.Response:
     except Exception:  # noqa: BLE001
         text = ""
     await asyncio.to_thread(db.upsert_resource, account, user, uri, text)
+
+    embed: EmbeddingProvider | None = request.app["embed"]
+    if embed and embed.configured and text:
+        vec = await embed.embed(text)
+        if vec:
+            await asyncio.to_thread(
+                db.upsert_embedding, "resource", uri, account, text, encode(vec)
+            )
     return web.json_response({"status": "ok", "uri": uri})
 
 
@@ -179,11 +202,22 @@ async def _handle_list_resources(request: web.Request) -> web.Response:
 
 
 async def _handle_search(request: web.Request) -> web.Response:
-    """FTS5 search across resources (and optionally messages).
+    """Hybrid search across resources and messages.
 
-    Body: ``{"query": "...", "kind": "resources|messages|both", "limit": 20, "account": ""}``.
+    Body: ``{
+        "query": "...",
+        "kind":  "resources|messages|both",      // default "resources"
+        "mode":  "fts5|semantic|hybrid",         // default "hybrid" if embed configured else "fts5"
+        "limit": 20,
+        "account": ""
+    }``
+
+    - ``fts5``     — keyword/lexical search via SQLite FTS5 (BM25).
+    - ``semantic`` — cosine similarity against query embedding (requires embed provider).
+    - ``hybrid``   — both; results are union'd, ranked by 0.5*BM25_norm + 0.5*cosine.
     """
     db: DB = request.app["db"]
+    embed: EmbeddingProvider | None = request.app["embed"]
     try:
         body = await request.json()
     except Exception:  # noqa: BLE001
@@ -194,18 +228,107 @@ async def _handle_search(request: web.Request) -> web.Response:
     kind = body.get("kind", "resources")
     limit = int(body.get("limit", 20))
     account = body.get("account") or request.headers.get("X-OpenViking-Account")
+    mode = body.get("mode") or ("hybrid" if (embed and embed.configured) else "fts5")
 
-    out: dict[str, list] = {}
-    if kind in ("resources", "both"):
-        out["resources"] = await asyncio.to_thread(db.search_resources, query, account, limit)
-    if kind in ("messages", "both"):
-        out["messages"] = await asyncio.to_thread(db.search_messages, query, limit)
+    if mode in ("semantic", "hybrid") and (embed is None or not embed.configured):
+        return web.json_response(
+            {"error": "semantic mode requested but no embedding provider configured"},
+            status=400,
+        )
+
+    out: dict[str, list] = {"mode": mode}
+
+    query_vec = None
+    if mode in ("semantic", "hybrid"):
+        query_vec = await embed.embed(query)  # type: ignore[union-attr]
+        if not query_vec:
+            return web.json_response({"error": "embed request failed"}, status=502)
+
+    for k in ("resources", "messages"):
+        if kind not in (k, "both"):
+            continue
+        fts_hits = []
+        sem_hits = []
+        if mode in ("fts5", "hybrid"):
+            if k == "resources":
+                fts_hits = await asyncio.to_thread(db.search_resources, query, account, limit)
+            else:
+                fts_hits = await asyncio.to_thread(db.search_messages, query, limit)
+        if mode in ("semantic", "hybrid"):
+            assert query_vec is not None
+            cands = await asyncio.to_thread(
+                db.candidate_embeddings,
+                kind=("resource" if k == "resources" else "message"),
+                account=account,
+            )
+            simple = [(ref_id, blob) for ref_id, blob, _ in cands]
+            ranked = topk_brute(query_vec, simple, k=limit)
+            cand_index = {ref_id: content for ref_id, _, content in cands}
+            sem_hits = [{"ref_id": rid, "score": s, "content": cand_index.get(rid, "")}
+                        for rid, s in ranked]
+
+        if mode == "fts5":
+            out[k] = fts_hits
+        elif mode == "semantic":
+            out[k] = sem_hits
+        else:  # hybrid: union by content, simple 0.5/0.5 score normalisation
+            out[k] = _hybrid_merge(fts_hits, sem_hits, k, limit)
+
     return web.json_response(out)
 
 
-def serve(host: str, port: int, db_path: Path, key_path: Path) -> None:
+def _hybrid_merge(fts_hits, sem_hits, kind, limit):
+    """Combine FTS5 BM25 (rank ascending = better) with cosine (descending)."""
+    # Normalise FTS5 rank: lower rank → higher score. Take 1 / (1 + rank).
+    by_content: dict[str, dict] = {}
+    for h in fts_hits:
+        c = h.get("content", "")
+        rank = float(h.get("rank", 0.0)) if h.get("rank") is not None else 0.0
+        fts_score = 1.0 / (1.0 + abs(rank))
+        ref_id = h.get("uri") or h.get("session_id") or c[:64]
+        by_content[c] = {
+            "ref_id": ref_id, "content": c, "fts_score": fts_score, "sem_score": 0.0
+        }
+    for h in sem_hits:
+        c = h.get("content", "")
+        sem_score = float(h.get("score", 0.0))
+        if c in by_content:
+            by_content[c]["sem_score"] = sem_score
+        else:
+            by_content[c] = {
+                "ref_id": h.get("ref_id", ""), "content": c,
+                "fts_score": 0.0, "sem_score": sem_score,
+            }
+    rows = list(by_content.values())
+    for r in rows:
+        r["score"] = 0.5 * r["fts_score"] + 0.5 * r["sem_score"]
+    rows.sort(key=lambda r: -r["score"])
+    return rows[:limit]
+
+
+def serve(
+    host: str,
+    port: int,
+    db_path: Path,
+    key_path: Path,
+    *,
+    openai_key_path: Path | None = None,
+    openai_model: str = "text-embedding-3-small",
+) -> None:
     api_key = key_path.read_text().strip() if key_path.exists() else ""
     db = DB(db_path)
-    app = build_app(db, api_key)
+
+    embed: EmbeddingProvider | None = None
+    if openai_key_path and openai_key_path.exists():
+        oai_key = openai_key_path.read_text().strip()
+        if oai_key:
+            embed = EmbeddingProvider(api_key=oai_key, model=openai_model)
+            log.info("openviking-lite: OpenAI embeddings enabled (model=%s)", openai_model)
+        else:
+            log.warning("openviking-lite: OpenAI key file empty — embeddings disabled")
+    else:
+        log.info("openviking-lite: no OpenAI key — running FTS5-only")
+
+    app = build_app(db, api_key, embed)
     log.info("openviking-lite serving on %s:%d (db=%s)", host, port, db_path)
     web.run_app(app, host=host, port=port, print=lambda *_: None)

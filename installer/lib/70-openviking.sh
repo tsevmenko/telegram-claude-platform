@@ -48,6 +48,18 @@ step_main() {
         fi
     done
 
+    # Stage the OpenAI key (collected in step 40) so openviking-lite can
+    # generate semantic embeddings.
+    local secrets_staging="${SECRETS_STAGING_DIR:-/var/lib/agent-installer/secrets}"
+    if [[ -f "${secrets_staging}/openai-api-key" ]]; then
+        install -m 0640 -o root -g "$OV_USER" \
+            "${secrets_staging}/openai-api-key" \
+            /etc/openviking/openai.key
+        ok "OpenAI API key staged → /etc/openviking/openai.key (semantic embeddings on)."
+    else
+        log "No OpenAI key — running L4 with FTS5 only (no embeddings)."
+    fi
+
     if command -v openviking &>/dev/null; then
         log "Found 'openviking' binary on PATH — using it."
         deploy_systemd_unit /usr/local/bin/openviking

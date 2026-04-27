@@ -20,7 +20,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     s.add_argument("--data-dir", default="/var/lib/openviking",
                    help="Directory for the SQLite file.")
     s.add_argument("--key-file", default="/etc/openviking/key",
-                   help="Path to the API key file (read at startup).")
+                   help="Path to the OpenViking API key file (read at startup).")
+    s.add_argument("--openai-key-file", default="/etc/openviking/openai.key",
+                   help="Optional: path to OpenAI API key for embeddings.")
+    s.add_argument("--openai-model", default="text-embedding-3-small",
+                   help="OpenAI embedding model id.")
     s.add_argument("--log-level", default="INFO",
                    choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     return p.parse_args(argv)
@@ -40,8 +44,16 @@ def main(argv: list[str] | None = None) -> int:
         data_dir.mkdir(parents=True, exist_ok=True)
         db_path = data_dir / "openviking.db"
         key_path = Path(args.key_file)
+        openai_key_path = Path(args.openai_key_file) if args.openai_key_file else None
         try:
-            serve(host=host, port=int(port), db_path=db_path, key_path=key_path)
+            serve(
+                host=host,
+                port=int(port),
+                db_path=db_path,
+                key_path=key_path,
+                openai_key_path=openai_key_path,
+                openai_model=args.openai_model,
+            )
         except KeyboardInterrupt:
             return 0
     return 0
