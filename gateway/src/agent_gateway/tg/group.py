@@ -30,11 +30,23 @@ def is_addressed_to_agent(
         return True
 
     # Forum/topic routing — preferred path.
+    # Telegram does NOT include `message_thread_id` for messages in the
+    # default General topic of a forum supergroup. We map that case to
+    # the routing key "general" so operators can register General the
+    # same way as named topics:
+    #     "topic_routing": {"-100123...": ["general", "42"]}
+    chat_topics = cfg.topic_routing.get(str(message.chat.id), [])
+    thread_key: str | None
     if message.message_thread_id is not None:
-        chat_topics = cfg.topic_routing.get(str(message.chat.id), [])
-        if chat_topics and str(message.message_thread_id) in chat_topics:
-            return True
-        # Fall through to @mention detection if topic not registered.
+        thread_key = str(message.message_thread_id)
+    elif getattr(message.chat, "is_forum", False):
+        thread_key = "general"
+    else:
+        thread_key = None
+
+    if thread_key and chat_topics and thread_key in chat_topics:
+        return True
+    # Fall through to @mention detection if topic not registered.
 
     text = (message.text or message.caption or "").lower()
     if not text:
