@@ -12,6 +12,7 @@ SQLite file; no separate vector store, no migrations beyond the initial
 
 from __future__ import annotations
 
+import re
 import sqlite3
 import threading
 import time
@@ -19,6 +20,22 @@ import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+
+# FTS5 reserves special characters and keywords; passing user input straight
+# into MATCH raises sqlite3.OperationalError. Strip everything that isn't a
+# word/whitespace character and drop FTS5 boolean keywords. Empty result
+# returns the no-match sentinel "*" (matches nothing rather than crashing).
+_FTS5_KEYWORDS = {"AND", "OR", "NOT", "NEAR"}
+_FTS5_NON_WORD = re.compile(r"[^\w\s]+", flags=re.UNICODE)
+
+
+def _sanitize_fts5(query: str) -> str:
+    cleaned = _FTS5_NON_WORD.sub(" ", query or "")
+    tokens = [t for t in cleaned.split() if t.upper() not in _FTS5_KEYWORDS]
+    if not tokens:
+        # Sentinel that matches nothing — avoids '' which is also a syntax error.
+        return '"___no_match_sentinel___"'
+    return " ".join(tokens)
 
 SCHEMA = """
 PRAGMA journal_mode = WAL;
@@ -134,6 +151,7 @@ class DB:
             return int(cur.lastrowid or 0)
 
     def search_messages(self, query: str, limit: int = 20) -> list[dict[str, Any]]:
+        safe = _sanitize_fts5(query)
         with self._connect() as conn:
             rows = conn.execute(
                 """
@@ -143,7 +161,7 @@ class DB:
                 ORDER BY rank
                 LIMIT ?
                 """,
-                (query, limit),
+                (safe, limit),
             ).fetchall()
         return [dict(r) for r in rows]
 
@@ -185,6 +203,7 @@ class DB:
 
     def search_resources(self, query: str, account: str | None = None,
                          limit: int = 20) -> list[dict[str, Any]]:
+        safe = _sanitize_fts5(query)
         with self._connect() as conn:
             if account:
                 rows = conn.execute(
@@ -195,7 +214,7 @@ class DB:
                     ORDER BY rank
                     LIMIT ?
                     """,
-                    (query, account, limit),
+                    (safe, account, limit),
                 ).fetchall()
             else:
                 rows = conn.execute(
@@ -206,7 +225,7 @@ class DB:
                     ORDER BY rank
                     LIMIT ?
                     """,
-                    (query, limit),
+                    (safe, limit),
                 ).fetchall()
         return [dict(r) for r in rows]
 

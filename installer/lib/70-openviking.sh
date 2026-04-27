@@ -40,13 +40,17 @@ step_main() {
     install -d -m 0700 -o root  -g root  /root/secrets
     install -d -m 0700 -o agent -g agent /home/agent/secrets
     install -d -m 0755 -o agent -g agent /home/agent/.claude-lab/shared/secrets
-    for dest in /root/secrets/openviking.key \
-                /home/agent/secrets/openviking.key \
-                /home/agent/.claude-lab/shared/secrets/openviking.key; do
-        if [[ ! -e "$dest" ]]; then
-            ln -s "$OV_KEY_FILE" "$dest"
-        fi
-    done
+
+    # Copy the key (not symlink!) so each user can read it as their own.
+    # The canonical key at /etc/openviking/key is 0640 root:openviking — only
+    # the openviking service user can read it via group. Agents (root, agent)
+    # are not in that group, and a symlink would require them to read the
+    # restricted target. Per-user copies sidestep this and keep ownership
+    # POSIX-clean. If Vesna regenerates the key, her admin tool must
+    # re-distribute these copies.
+    install -m 0600 -o root  -g root  "$OV_KEY_FILE" /root/secrets/openviking.key
+    install -m 0600 -o agent -g agent "$OV_KEY_FILE" /home/agent/secrets/openviking.key
+    install -m 0600 -o agent -g agent "$OV_KEY_FILE" /home/agent/.claude-lab/shared/secrets/openviking.key
 
     # Stage the OpenAI key (collected in step 40) so openviking-lite can
     # generate semantic embeddings.
@@ -146,8 +150,9 @@ Group=${OV_USER}
 ExecStart=${exec} serve --listen 127.0.0.1:${OV_PORT} --data-dir ${OV_DATA_DIR} --key-file ${OV_KEY_FILE}
 Restart=on-failure
 RestartSec=5
-StandardOutput=append:${OV_LOG_DIR}/openviking.log
-StandardError=append:${OV_LOG_DIR}/openviking.log
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openviking
 
 NoNewPrivileges=true
 ProtectSystem=strict
