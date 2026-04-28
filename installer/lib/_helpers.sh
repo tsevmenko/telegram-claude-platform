@@ -46,13 +46,11 @@ write_as_user() {
     install -o "$owner" -g "$owner" -m "$mode" "$src" "$dst"
 }
 
-# fix_owner PATH OWNER
-# Recursively chown PATH to OWNER:OWNER. -h preserves symlinks.
-fix_owner() {
-    local path="$1" owner="$2"
-    [[ -e "$path" ]] || return 0
-    chown -RhP "${owner}:${owner}" "$path"
-}
+# NOTE: fix_owner is defined in 00-preflight.sh with signature
+# `fix_owner USER:GROUP PATH`. The OLD signature `fix_owner PATH OWNER` used
+# to live here; the duplicate definition silently overrode the supply-chain
+# helper and caused argument-order bugs when 00-preflight wasn't source-loaded
+# yet. Use the canonical implementation only.
 
 # as_user USER -- CMD ARGS ...
 # Run CMD as USER with their HOME and a sensible cwd.
@@ -196,7 +194,7 @@ plant_workspace() {
     find "${ws}/scripts" -type f -name '*.sh' -exec chmod 0755 {} \;
     find "${ws}/skills"  -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod 0755 {} \;
 
-    fix_owner "$ws" "$owner"
+    fix_owner "${owner}:${owner}" "$ws"
 }
 
 # install_global_claude_dir OWNER GLOBAL_DIR HOOKS_DIR OPERATOR_NAME TG_USER_ID LANGUAGE TIMEZONE
