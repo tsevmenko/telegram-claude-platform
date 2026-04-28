@@ -1,0 +1,19 @@
+# Pinned external sources. Verified by 00-preflight.sh::verify_pins before
+# every install — if a SHA goes 404 (rebased / repo deleted) the installer
+# aborts loudly rather than silently fetching mismatched code later.
+#
+# Format: NAME=SHA[#optional comment]
+# Repo URLs live in installer/PINS.repos so the same repo can be pinned to
+# different shas across NAMEs (e.g. SUPERPOWERS_CORE_SHA + SUPERPOWERS_FORK_SHA).
+#
+# Comments and blank lines are ignored.
+
+# --- Sprint 3 (P7) — fill these in when Superpowers lands ----------------
+
+# SUPERPOWERS_SHA=<commit-sha>           # pcvelz/superpowers, 8-skill core
+# SCRAPECREATORS_SKILL_SHA=<commit-sha>  # qwwiwi/instagram-superpowers, instagram-hikerapi/
+
+# --- baseline / placeholder so verify_pins has at least one entry to test --
+
+# Self-pin: our own v0.1.0-baseline. Lets verify_pins exercise the happy path.
+SELF_BASELINE=v0.1.0-baseline

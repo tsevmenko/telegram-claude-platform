@@ -1,0 +1,8 @@
+# Maps PINS NAME → owner/repo for verify_pins lookup.
+# Format: NAME=owner/repo
+#
+# Comments and blank lines ignored.
+
+SUPERPOWERS_SHA=pcvelz/superpowers
+SCRAPECREATORS_SKILL_SHA=qwwiwi/instagram-superpowers
+SELF_BASELINE=tsevmenko/telegram-claude-platform
