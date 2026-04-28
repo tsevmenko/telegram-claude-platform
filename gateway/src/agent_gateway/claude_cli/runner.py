@@ -89,6 +89,13 @@ class ClaudeRunner:
             # Detach into a new session/process group so /stop can kill the
             # full tool subtree (claude → bash → user command) via killpg.
             start_new_session=True,
+            # Default asyncio StreamReader buffer is 64 KB. Stream-json events
+            # routinely exceed that — Read tool on a screenshot returns base64
+            # content blocks ≥ 1 MB, big tool_result echoes can blow past too.
+            # Without raising the limit, readline() throws LimitOverrunError
+            # ("Separator is not found, and chunk exceed the limit") and the
+            # whole turn dies. 10 MB covers any realistic single JSON line.
+            limit=10 * 1024 * 1024,
         )
 
         active = ActiveProc(process=proc, sid=sid, chat_id=chat_id, agent=agent)
@@ -103,7 +110,26 @@ class ClaudeRunner:
         async def _line_iter() -> AsyncIterator[str]:
             assert proc.stdout is not None
             while True:
-                line = await proc.stdout.readline()
+                try:
+                    line = await proc.stdout.readline()
+                except ValueError as exc:
+                    # Even with limit=10MB above, a pathologically huge line
+                    # (claude streamed back a multi-megabyte file content)
+                    # can still trip the buffer. Drain past it and continue
+                    # rather than crashing the whole turn.
+                    log.warning(
+                        "[%s] line buffer overrun (%s) — skipping oversize event",
+                        agent, exc,
+                    )
+                    # Read raw bytes until newline to drain the offending line.
+                    try:
+                        while True:
+                            chunk = await proc.stdout.read(1024 * 1024)
+                            if not chunk or chunk.endswith(b"\n"):
+                                break
+                    except Exception:  # noqa: BLE001
+                        pass
+                    continue
                 if not line:
                     break
                 yield line.decode("utf-8", errors="replace")
