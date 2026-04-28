@@ -35,9 +35,31 @@ ACTIVITY_WINDOW = 5
 THINKING_LINES = 4
 
 _SECRET_PATTERNS = [
+    # Generic env-style assignments. Catches "API_KEY=foo", "Bearer abc..." etc.
+    # Always come first so the more specific patterns below act on residual
+    # text that this one didn't catch.
     re.compile(r"(?i)(api[_-]?key|token|secret|password|bearer)[\s:=]+\S+"),
+    # GitHub PATs (classic + fine-grained).
     re.compile(r"(ghp_|gho_|ghu_|ghs_|ghr_)[A-Za-z0-9_-]{20,}"),
+    # Anthropic — both the modern `sk-ant-…` and legacy `sk-…` shapes.
+    re.compile(r"sk-ant-[A-Za-z0-9_-]{20,}"),
     re.compile(r"sk-[A-Za-z0-9]{20,}"),
+    # OpenAI project-scoped keys (newer format from 2024+).
+    re.compile(r"sk-proj-[A-Za-z0-9_-]{20,}"),
+    # Groq.
+    re.compile(r"gsk_[A-Za-z0-9_-]{20,}"),
+    # Slack bot/user tokens.
+    re.compile(r"xox[bp]-\d{8,}-\d{8,}-[A-Za-z0-9]{20,}"),
+    # AWS access key ID.
+    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
+    # JWT (3-segment base64, the fragile signature suffix).
+    re.compile(r"\beyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{20,}"),
+    # Telegram bot tokens. Form is `<digit-id>:AA<base64>`. Real tokens have ≥6
+    # digits before the colon and ≥30 chars after — fakes like "123:fake" don't
+    # match by design (so test fixtures keep working).
+    re.compile(r"\b\d{6,10}:AA[A-Za-z0-9_-]{30,}\b"),
+    # Supabase project URLs (subdomain looks like 16+ random chars).
+    re.compile(r"\bhttps://[a-z0-9]{16,}\.supabase\.co\b"),
 ]
 
 
@@ -81,6 +103,9 @@ class BoundaryTracker:
     _todos: list[TodoItem] = field(default_factory=list)
     _subagents: list[Subagent] = field(default_factory=list)
     _pending_subagent_by_id: dict[str, int] = field(default_factory=dict)
+    # Files the agent created/modified via Write/Edit. Surfaced after the
+    # final event so the consumer can ship them as Telegram documents.
+    written_files: list[str] = field(default_factory=list)
 
     def feed(self, event: StreamEvent) -> None:
         if event.kind == "thinking":
@@ -92,6 +117,15 @@ class BoundaryTracker:
             self.final_text += event.data.get("text", "")
         elif event.kind == "tool_use":
             self._tool_calls.append(self._summarise_tool(event.data))
+            # Track file paths from Write/Edit so the consumer can auto-send
+            # them as documents. We only care about the *last* write to each
+            # path — dedup happens later when consumer ships them.
+            tname = event.data.get("name", "")
+            if tname in ("Write", "Edit"):
+                tinput = event.data.get("input", {}) or {}
+                fp = tinput.get("file_path")
+                if isinstance(fp, str) and fp:
+                    self.written_files.append(fp)
         elif event.kind == "todo":
             todos = event.data.get("todos", [])
             self._todos = [

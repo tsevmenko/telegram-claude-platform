@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import signal
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,6 +19,33 @@ from agent_gateway.claude_cli.stream_parser import StreamEvent, parse_stream
 from agent_gateway.config import AgentConfig
 
 log = logging.getLogger(__name__)
+
+
+def _killpg(pid: int) -> None:
+    """SIGKILL the entire process group rooted at ``pid``.
+
+    Why a group kill rather than ``proc.kill()``: ``claude`` CLI spawns child
+    processes for each tool call (Bash → bash → whatever the bash command
+    spawns). On ``/stop`` we want to take down the whole tree, not just the
+    direct child — otherwise ``Bash(sleep 600)`` survives and burns time.
+
+    Requires the subprocess to have been started with ``start_new_session=
+    True`` so it has its own process group. Falls back to direct ``os.kill``
+    if the group is gone (already-dead processes are common on race paths).
+    """
+    try:
+        pgid = os.getpgid(pid)
+    except ProcessLookupError:
+        return
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        # Group went away between getpgid and killpg, or we lost permission
+        # (PID reuse). Try the direct kill and accept whatever happens.
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
 
 
 @dataclass
@@ -58,6 +86,9 @@ class ClaudeRunner:
             stderr=asyncio.subprocess.PIPE,
             cwd=agent_cfg.workspace,
             env=env,
+            # Detach into a new session/process group so /stop can kill the
+            # full tool subtree (claude → bash → user command) via killpg.
+            start_new_session=True,
         )
 
         active = ActiveProc(process=proc, sid=sid, chat_id=chat_id, agent=agent)
@@ -89,7 +120,7 @@ class ClaudeRunner:
                 ):
                     yield ev
             except asyncio.TimeoutError:
-                proc.kill()
+                _killpg(proc.pid)
                 yield StreamEvent(
                     kind="final",
                     data={
@@ -124,7 +155,7 @@ class ClaudeRunner:
         if not active:
             return False
         try:
-            active.process.kill()
+            _killpg(active.process.pid)
             await active.process.wait()
         except ProcessLookupError:
             pass
@@ -154,6 +185,10 @@ class ClaudeRunner:
     def _build_env(self, agent_cfg: AgentConfig) -> dict[str, str]:
         env = dict(os.environ)
         env.setdefault("HOME", str(Path(agent_cfg.workspace).parent.parent))
+        # Pin the auto-compact window per the architecture's "exactly-one env
+        # var" doctrine. Use setdefault so the operator can override per-agent
+        # via a config-injected env (e.g. a low-context debug agent at 200K).
+        env.setdefault("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "400000")
         return env
 
 

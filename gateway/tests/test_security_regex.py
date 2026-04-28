@@ -25,10 +25,17 @@ _ALLOWLIST_NAMES = {
     "test_secret_masking_extended.py",  # planned in P3d.3
     "test_smoke.py",                  # uses 123:fake style placeholders
     "test_p3a.py",                    # uses 123:fake style placeholders
+    "test_p3d.py",                    # exercises extended mask_secrets() with fake payloads
     "test_boundary.py",               # exercises mask_secrets() with fake ghp_ payloads
 }
 
-_ALLOWLIST_DIRS = {".git", ".venv", "__pycache__", "node_modules", "fixtures"}
+_ALLOWLIST_DIRS = {
+    ".git", ".venv", "__pycache__", "node_modules", "fixtures",
+    # Pytest's parametrize cache stringifies test ids, which can include the
+    # fake-secret values from our parametrized masking tests. The cache is
+    # generated, not committed.
+    ".pytest_cache",
+}
 
 _SECRET_PATTERNS: dict[str, re.Pattern[str]] = {
     "anthropic_classic": re.compile(r"\bsk-ant-api03-[A-Za-z0-9_\-]{40,}"),
