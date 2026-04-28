@@ -50,7 +50,9 @@ fi
 readonly INSTALLER_STEPS
 
 # Resolve installer root — works both for `./install.sh` and `curl | bash`.
-_SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "$0")"
+# When piped from stdin, BASH_SOURCE is unset and `set -u` would explode, so
+# we default it to "" before dereferencing.
+_SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]:-}" 2>/dev/null || echo "${0:-/dev/stdin}")"
 _SCRIPT_DIR="$(cd "$(dirname "$_SCRIPT_PATH")" 2>/dev/null && pwd || pwd)"
 INSTALLER_ROOT="${INSTALLER_ROOT:-$_SCRIPT_DIR}"
 unset _SCRIPT_PATH _SCRIPT_DIR
