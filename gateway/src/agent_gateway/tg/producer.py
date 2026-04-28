@@ -20,7 +20,7 @@ from agent_gateway.tg.voice import VoiceTranscriber
 
 log = logging.getLogger(__name__)
 
-OOB_COMMANDS = frozenset({"/stop", "/cancel", "/status", "/reset", "/new"})
+OOB_COMMANDS = frozenset({"/stop", "/cancel", "/status", "/reset", "/new", "/compact"})
 
 
 def build_router(

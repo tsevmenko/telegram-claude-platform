@@ -33,6 +33,23 @@ log = logging.getLogger(__name__)
 INITIAL_STATUS_HTML = "<i>working — 0s</i>"
 
 
+def _is_parse_error(exc: TelegramBadRequest) -> bool:
+    """Detect Telegram's 'can't parse entities' family of errors.
+
+    These come from malformed HTML in our markdown→HTML rendering. The fix is
+    always the same: drop ``parse_mode`` and resend as plain text. Other
+    `TelegramBadRequest` variants (rate-limit, message-not-modified, no-such-
+    chat) should NOT be retried with this strategy.
+    """
+    msg = (str(exc) or "").lower()
+    return (
+        "can't parse entities" in msg
+        or "can't find end of the entity" in msg
+        or "unsupported start tag" in msg
+        or "unmatched end tag" in msg
+    )
+
+
 @dataclass
 class IncomingMessage:
     chat_id: int
@@ -193,6 +210,51 @@ class AgentConsumer:
                 message_thread_id=msg.thread_id,
                 text="new session started.",
             )
+        elif cmd == "/compact":
+            reply = await self._run_compact()
+            await self.bot.send_message(
+                chat_id=msg.chat_id,
+                message_thread_id=msg.thread_id,
+                text=reply,
+            )
+
+    async def _run_compact(self) -> str:
+        """Trigger trim-hot.sh for this agent's workspace.
+
+        Lives in <wsp_root>/scripts/trim-hot.sh; workspace is <wsp_root>/.claude.
+        Returns a short status string for the operator.
+        """
+        wsp = Path(self.cfg.workspace)
+        script = wsp.parent / "scripts" / "trim-hot.sh"
+        recent = wsp / "core" / "hot" / "recent.md"
+
+        size_before = recent.stat().st_size if recent.is_file() else 0
+        if not script.is_file():
+            return f"compact: script not found at {script}"
+
+        proc = await asyncio.create_subprocess_exec(
+            "bash",
+            str(script),
+            env={**__import__("os").environ, "AGENT_WORKSPACE": str(wsp)},
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=120)
+        except asyncio.TimeoutError:
+            proc.kill()
+            try:
+                await proc.wait()  # collect zombie before we abandon the proc
+            except Exception:  # noqa: BLE001
+                pass
+            return "compact: trim-hot.sh exceeded 120s — killed."
+
+        size_after = recent.stat().st_size if recent.is_file() else 0
+        delta_kb = (size_before - size_after) / 1024
+        return (
+            f"compact done. recent.md: {size_before / 1024:.1f} KB → "
+            f"{size_after / 1024:.1f} KB (saved {delta_kb:+.1f} KB)."
+        )
 
     async def _ack(self, msg: IncomingMessage) -> None:
         try:
@@ -215,9 +277,18 @@ class AgentConsumer:
                 text=text,
                 parse_mode=ParseMode.HTML,
             )
-        except TelegramBadRequest:
-            # "message is not modified" or rate-limit — both safe to swallow.
-            pass
+        except TelegramBadRequest as e:
+            # On parse-entities errors retry as plain text (drop parse_mode).
+            # "message is not modified" / rate-limit / etc. → still swallow.
+            if _is_parse_error(e):
+                try:
+                    await self.bot.edit_message_text(
+                        chat_id=status_msg.chat.id,
+                        message_id=status_msg.message_id,
+                        text=rendered[:4000],
+                    )
+                except TelegramBadRequest:
+                    pass
 
     async def _finalise(self, status_msg, msg: IncomingMessage, final_text: str) -> None:
         if not final_text:
@@ -244,15 +315,37 @@ class AgentConsumer:
                 disable_web_page_preview=True,
                 reply_markup=first_keyboard,
             )
-        except TelegramBadRequest:
-            await self.bot.send_message(
-                chat_id=msg.chat_id,
-                message_thread_id=msg.thread_id,
-                text=chunks[0],
-                parse_mode=ParseMode.HTML,
-                disable_web_page_preview=True,
-                reply_markup=first_keyboard,
-            )
+        except TelegramBadRequest as e:
+            # Two failure modes: (1) status message can't be edited (e.g. too
+            # old) — fall back to send_message; (2) HTML parse error — strip
+            # parse_mode and retry. Try the parse-error path first since it's
+            # cheaper (no extra round-trip).
+            if _is_parse_error(e):
+                try:
+                    await self.bot.edit_message_text(
+                        chat_id=status_msg.chat.id,
+                        message_id=status_msg.message_id,
+                        text=cleaned[:4000],
+                        disable_web_page_preview=True,
+                        reply_markup=first_keyboard,
+                    )
+                except TelegramBadRequest:
+                    await self.bot.send_message(
+                        chat_id=msg.chat_id,
+                        message_thread_id=msg.thread_id,
+                        text=cleaned[:4000],
+                        disable_web_page_preview=True,
+                        reply_markup=first_keyboard,
+                    )
+            else:
+                await self.bot.send_message(
+                    chat_id=msg.chat_id,
+                    message_thread_id=msg.thread_id,
+                    text=chunks[0],
+                    parse_mode=ParseMode.HTML,
+                    disable_web_page_preview=True,
+                    reply_markup=first_keyboard,
+                )
 
         for i, chunk in enumerate(chunks[1:], start=1):
             is_last = i == len(chunks) - 1
@@ -274,5 +367,13 @@ class AgentConsumer:
                 text=text,
                 parse_mode=ParseMode.HTML,
             )
-        except TelegramBadRequest:
-            pass
+        except TelegramBadRequest as e:
+            if _is_parse_error(e):
+                try:
+                    await self.bot.edit_message_text(
+                        chat_id=status_msg.chat.id,
+                        message_id=status_msg.message_id,
+                        text=f"error: {detail[:300]}",
+                    )
+                except TelegramBadRequest:
+                    pass

@@ -18,7 +18,7 @@ from agent_gateway.claude_cli.runner import ClaudeRunner
 from agent_gateway.claude_cli.session import SessionStore
 from agent_gateway.config import GatewayConfig
 from agent_gateway.consumer import AgentConsumer
-from aiogram.types import CallbackQuery
+from aiogram.types import BotCommand, CallbackQuery
 
 from agent_gateway.memory.l4_openviking import L4OpenViking
 from agent_gateway.tg.buttons import CallbackDispatcher
@@ -27,6 +27,16 @@ from agent_gateway.tg.voice import VoiceTranscriber
 from agent_gateway.tg.webhook_api import WebhookAPI
 
 log = logging.getLogger(__name__)
+
+# Slash-menu shown in BotFather command list. Order matters — Telegram clients
+# render top-to-bottom. Keep `/stop` first because it's the panic button.
+_BOT_COMMANDS: list[BotCommand] = [
+    BotCommand(command="stop", description="Stop the current task"),
+    BotCommand(command="status", description="Show session + memory status"),
+    BotCommand(command="reset", description="End session, save handoff"),
+    BotCommand(command="new", description="Start a fresh session"),
+    BotCommand(command="compact", description="Compact HOT memory to WARM now"),
+]
 
 
 class MultiAgentGateway:
@@ -102,6 +112,15 @@ class MultiAgentGateway:
     async def run(self) -> None:
         for consumer in self.consumers.values():
             consumer.start()
+
+        # Populate the BotFather slash-menu so operators see the OOB commands
+        # in the Telegram client UI without typing `/help` first. Best-effort:
+        # if Telegram is rate-limiting, we don't want to block startup.
+        for bot in self.bots:
+            try:
+                await bot.set_my_commands(_BOT_COMMANDS)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("set_my_commands failed: %s", exc)
 
         webhook: WebhookAPI | None = None
         if self.config.webhook.enabled and self.config.webhook.token_file:
