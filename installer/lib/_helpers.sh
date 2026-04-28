@@ -61,9 +61,13 @@ as_user() {
 }
 
 # is_noninteractive
-# True if EDGELAB_NONINTERACTIVE=1 or stdin is not a tty.
+# True if INSTALLER_NONINTERACTIVE=1 explicitly OR there's no controlling tty.
+# We deliberately do NOT check `! -t 0` (stdin) because under `curl | bash`
+# stdin is the curl pipe — not a tty — yet the operator is still sitting at
+# a terminal that we can read from via /dev/tty. All interactive `read`
+# calls in this codebase already redirect from /dev/tty for that reason.
 is_noninteractive() {
-    [[ "${INSTALLER_NONINTERACTIVE:-0}" == "1" ]] || [[ ! -t 0 ]]
+    [[ "${INSTALLER_NONINTERACTIVE:-0}" == "1" ]] || [[ ! -r /dev/tty ]]
 }
 
 # prompt_or_env VAR ENV_NAME PROMPT [DEFAULT] [--secret]
