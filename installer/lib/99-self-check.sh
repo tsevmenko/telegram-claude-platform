@@ -96,6 +96,21 @@ print_next_steps() {
         printf '  2. OAuth agent:  sudo -u agent -i bash -lc '\''claude login'\''\n'
     fi
 
+    printf '  3. Start services: systemctl start agent-vesna agent-user-gateway\n'
+
+    # Telegram-side step that breaks silently otherwise. Privacy Mode is cached
+    # at the (bot, group) pair when the bot joins. Even if you flip Privacy off
+    # in @BotFather, the cache persists. Promoting the bot to admin invalidates
+    # the cache → bot reliably sees all messages.
+    printf '\n%b⚠ Critical Telegram-side step:%b\n' "$C_YELLOW" "$C_NC"
+    printf '   In your forum group, promote BOTH bots to Admin (Group Settings\n'
+    printf '   → Administrators → Add Admin → @vesna_admin_bot, @<leto_bot>).\n'
+    printf '   Minimum permission needed: "Manage messages" (Pin is nice).\n'
+    printf '   Without this Telegram caches Privacy=on at the moment a bot\n'
+    printf '   joined the group; even toggling Privacy off in @BotFather later\n'
+    printf '   will NOT take effect — the bot only sees @mentions and ignores\n'
+    printf '   plain messages in topics. Admin status bypasses the cache.\n'
+
     if [[ -s /root/vesna/webhook-token.txt ]]; then
         printf '\n%bWebhook token (save to your password manager):%b\n  ' "$C_BOLD" "$C_NC"
         cat /root/vesna/webhook-token.txt
