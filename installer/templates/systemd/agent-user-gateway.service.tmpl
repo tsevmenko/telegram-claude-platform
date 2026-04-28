@@ -15,12 +15,37 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=agent-user-gateway
 
-# Hardening
+# Hardening — defence in depth in case the bypass-permissions agent gets
+# tricked into something the hooks didn't catch.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=/home/agent
+LockPersonality=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+# Stay on standard families: AF_UNIX (local IPC), AF_INET/INET6 (HTTPS to
+# Anthropic + Telegram + OpenViking). Block raw sockets, packet, etc.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+# Default-deny syscalls; @system-service is the systemd-curated allowlist.
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @debug @resources @cpu-emulation @obsolete @reboot @swap @raw-io @mount
+SystemCallErrorNumber=EPERM
+# Capabilities — Leto needs none (no port < 1024, no setuid).
+CapabilityBoundingSet=
+AmbientCapabilities=
+# Kill non-main processes on shutdown so killpg has nothing left to clean.
+KillMode=mixed
+# Memory cap so a runaway claude turn can't OOM the host.
+MemoryMax=2G
 
 [Install]
 WantedBy=multi-user.target

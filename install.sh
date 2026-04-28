@@ -35,6 +35,7 @@ else
     INSTALLER_STEPS=(
         00-preflight
         10-system-deps
+        15-hardening
         20-claude-cli
         30-users
         40-secrets

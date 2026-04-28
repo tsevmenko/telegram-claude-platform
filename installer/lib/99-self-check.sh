@@ -43,6 +43,18 @@ step_main() {
             "curl -fsS --max-time 5 http://127.0.0.1:1933/api/v1/health"
     fi
 
+    # --- baseline hardening (15-hardening.sh) -----------------------------
+    if [[ "${HARDENING_SKIP:-0}" != "1" ]]; then
+        check "ufw enabled (default-deny inbound)" \
+            "ufw status 2>/dev/null | grep -q 'Status: active'"
+        check "fail2ban running"                     "systemctl is-active --quiet fail2ban"
+        check "unattended-upgrades enabled"          "test -f /etc/apt/apt.conf.d/20auto-upgrades"
+        check "sshd MaxAuthTries hardened (=3)" \
+            "grep -qE '^MaxAuthTries[[:space:]]+3' /etc/ssh/sshd_config"
+        check "webhook bound to 127.0.0.1 (not public)" \
+            "jq -e '.webhook.listen_host == \"127.0.0.1\"' /home/agent/gateway/config.json"
+    fi
+
     printf '\n'
     if (( issues == 0 )); then
         ok "All checks passed."
