@@ -201,10 +201,21 @@ plant_workspace() {
     fix_owner "${owner}:${owner}" "$ws"
 }
 
-# install_global_claude_dir OWNER GLOBAL_DIR HOOKS_DIR OPERATOR_NAME TG_USER_ID LANGUAGE TIMEZONE
+# install_global_claude_dir OWNER GLOBAL_DIR HOOKS_DIR OPERATOR_NAME TG_USER_ID LANGUAGE TIMEZONE [SETTINGS_PROFILE]
 # Plants ~/.claude/ — global CLAUDE.md, settings.json with hooks, mcp.json.
+#
+# SETTINGS_PROFILE selects which settings.json template:
+#   "vesna" → vesna-settings.json.tmpl  (sysadmin allowlist; ~150 entries)
+#   default → settings.json.tmpl        (compact dev allowlist for client agents)
+#
+# Why split: Vesna runs as root with bypass_permissions=false (Anthropic
+# disallows --dangerously-skip-permissions for uid=0). Without a wide
+# allowlist she has to ask the operator on every routine sysadmin command.
+# Client agents (Leto + future user-agents) run with bypass_permissions=true
+# and don't consult permissions.allow at all in the common case.
 install_global_claude_dir() {
     local owner="$1" cdir="$2" hooks_dir="$3" op_name="$4" tg_uid="$5" lang="$6" tz="$7"
+    local profile="${8:-default}"
 
     install -d -m 0700 -o "$owner" -g "$owner" "$cdir"
     install -d -m 0755 -o "$owner" -g "$owner" "${cdir}/plugins"
@@ -223,10 +234,15 @@ install_global_claude_dir() {
         install -m 0644 -o "$owner" -g "$owner" "$tmp" "${cdir}/CLAUDE.md"
     fi
 
-    # settings.json with hook bindings
+    # settings.json — pick template by profile.
     if [[ ! -f "${cdir}/settings.json" ]]; then
+        local settings_src
+        case "$profile" in
+            vesna)   settings_src="${tpl_root}/vesna-settings.json.tmpl" ;;
+            *)       settings_src="${tpl_root}/settings.json.tmpl" ;;
+        esac
         local tmp; tmp="$(mktemp)"; TMPFILES+=("$tmp")
-        render_template "${tpl_root}/settings.json.tmpl" "$tmp" \
+        render_template "$settings_src" "$tmp" \
             HOOKS_DIR "$hooks_dir"
         install -m 0644 -o "$owner" -g "$owner" "$tmp" "${cdir}/settings.json"
     fi

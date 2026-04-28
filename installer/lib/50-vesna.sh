@@ -20,7 +20,8 @@ step_main() {
         "${OPERATOR_NAME:-operator}" \
         "${TG_USER_ID:-0}" \
         "${OPERATOR_LANGUAGE:-English}" \
-        "${OPERATOR_TIMEZONE:-Europe/Kyiv}"
+        "${OPERATOR_TIMEZONE:-Europe/Kyiv}" \
+        "vesna"
 
     deploy_admin_skill
 
