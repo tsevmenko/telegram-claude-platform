@@ -59,6 +59,7 @@ install_for_user() {
         fi
     fi
 
-    fix_owner "$plugins_dir" "$user"
+    # Helper signature is `fix_owner USER:GROUP PATH` (defined in 00-preflight.sh).
+    fix_owner "${user}:${user}" "$plugins_dir"
     log "Superpowers wired for ${user} at ${sp_dir}"
 }
