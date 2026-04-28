@@ -35,11 +35,19 @@ def build_router(
     bot_username = consumer.cfg.bot_username
 
     # OOB handlers — registered BEFORE the catch-all so they win the match.
+    # Crucially: OOB still has to respect group_id + topic_routing checks,
+    # otherwise every bot in the same group answers /status in every topic.
+    # User allowlist is intentionally bypassed (operator must always be able
+    # to /stop a runaway turn even from a chat we'd otherwise reject).
     for cmd in OOB_COMMANDS:
         bare = cmd.lstrip("/")
 
         @router.message(Command(bare), flags={"oob": True, "cmd": cmd})
         async def _oob_handler(message: Message, **_: Any) -> None:
+            if not _accept_for_oob(
+                message, allowed_group_ids, consumer, bot_username
+            ):
+                return
             await _enqueue_oob(message, consumer, message.text or "")
 
     @router.message(F.voice)
@@ -81,6 +89,27 @@ def _accept(
     if not _allowed(message, allowed_user_ids):
         return False
 
+    chat_type = message.chat.type
+    if chat_type in ("group", "supergroup", "channel"):
+        if allowed_group_ids and message.chat.id not in allowed_group_ids:
+            return False
+        return is_addressed_to_agent(consumer.name, consumer.cfg, message, bot_username)
+    return True
+
+
+def _accept_for_oob(
+    message: Message,
+    allowed_group_ids: set[int],
+    consumer: AgentConsumer,
+    bot_username: str | None,
+) -> bool:
+    """Same as ``_accept`` but skips the user allowlist.
+
+    Rationale: ``/stop`` and ``/cancel`` are panic buttons that must always
+    fire regardless of which user typed them in an allowlisted group. Topic
+    routing is still enforced — otherwise every bot in the same group
+    answers ``/status`` in every topic.
+    """
     chat_type = message.chat.type
     if chat_type in ("group", "supergroup", "channel"):
         if allowed_group_ids and message.chat.id not in allowed_group_ids:
