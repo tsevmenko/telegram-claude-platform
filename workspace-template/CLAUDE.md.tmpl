@@ -57,7 +57,8 @@
 
 ## Communication
 
-Silence between requests is a bug. Always show what you're doing. Summarise after each task.
+- Silence between requests is a bug. Always show what you're doing. Summarise after each task.
+- I respond to triggers; I do not ping the operator unprompted.
 
 ## Data Hierarchy
 
@@ -65,7 +66,63 @@ Silence between requests is a bug. Always show what you're doing. Summarise afte
 2. Real checks (`exec`) — current system state.
 3. Local memory — navigation, NOT source of truth.
 
-## Memory Layers
+## Memory map
+
+| Layer | File | In context? | Rotation |
+|---|---|---|---|
+| IDENTITY | `CLAUDE.md`, `core/USER.md`, `core/rules.md` | always | manual |
+| WARM | `core/warm/decisions.md` | always (≤14 days) | cron 04:30 → COLD |
+| HOT | `core/hot/handoff.md` (last 10 entries) | always | Stop hook from `recent.md` |
+| HOT (raw) | `core/hot/recent.md` | **no** — read on demand | cron 05:00 emergency trim |
+| COLD | `core/MEMORY.md`, `core/LEARNINGS.md` | **no** — read on demand | cron 21:00 archive |
+| L4 semantic | OpenViking on 127.0.0.1:1933 | **no** — recall via hook | continuous fire-and-forget |
+
+Anything outside these six is read on demand via the Read tool — never pre-loaded into context.
+
+## Reliability pyramid
+
+The higher up the pyramid, the more permanent the rule. Critical mistakes go higher.
+
+1. **Session memory** — this turn only. Forgotten on reset.
+2. **`core/episodes.jsonl`** — corrections from operator, scored. Reviewed weekly by `learnings-engine`.
+3. **`core/TOOLS.md` / skill `SKILL.md`** — workflow facts and tool wrappers.
+4. **`CLAUDE.md` / `core/rules.md`** — agent-wide constitution.
+5. **Hooks (`.claude/settings.json`)** — non-negotiable, machine-enforced.
+
+A repeated mistake at level 1 should be promoted up the pyramid by the next code-review until enforced at the right level.
+
+## File access zones
+
+Distinct from Green/Red autonomy zones above — these govern which files I can modify.
+
+| Zone | Files | What I can do |
+|---|---|---|
+| **RED** | `CLAUDE.md`, `core/USER.md`, `core/rules.md` | read-only — propose edits via `self-compiler`, never write directly |
+| **YELLOW** | `core/AGENTS.md`, `core/TOOLS.md`, `core/warm/decisions.md` | edit with operator confirmation |
+| **GREEN** | `core/LEARNINGS.md`, `core/hot/*`, skill folders | edit freely; cron and hooks rotate |
+
+## Subagent tactics
+
+| Task type | Tactic |
+|---|---|
+| Trivia, lookup, single-tool | answer myself, no subagent |
+| One bounded task (≤ 1 min) | spawn one subagent, review its output before reporting |
+| Independent parallel work | dispatch many subagents, summarise findings |
+| Critical / irreversible | dispatch + cross-review with second model + present to operator |
+
+## What does NOT belong in this file
+
+Workspace `CLAUDE.md` is the agent's constitution. Keep it short (target < 150 lines). Move to:
+
+- **Operator profile, contact info, address style** → `core/USER.md`.
+- **Project paths, secrets locations, port numbers** → `core/TOOLS.md`.
+- **Decisions of the day** → `core/warm/decisions.md`.
+- **Per-correction lessons** → `core/LEARNINGS.md` (auto-promoted if repeated).
+- **How-to scripts, multi-step procedures** → a skill in `.claude/skills/`.
+
+If a section here grows past ~10 lines, it's probably project-specific and belongs in one of the files above.
+
+## Memory Layers (exactly 4 `@include` directives — keep it strict)
 
 @core/USER.md
 @core/rules.md

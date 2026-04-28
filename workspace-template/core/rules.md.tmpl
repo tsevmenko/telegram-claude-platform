@@ -11,6 +11,27 @@
 - On every operator correction, append a one-line entry to `LEARNINGS.md`.
 - After three repeated lessons on the same topic, escalate: propose a permanent rule change in `CLAUDE.md` via the `self-compiler` skill.
 
+## Escalation (3-strike rule)
+
+When a fix doesn't work, **don't loop**. Escalate up the chain:
+
+1. **First try** — your initial approach.
+2. **Second try** — different angle (different tool, different model, different read order).
+3. **Third try** — STOP. Report the problem to the operator. Include:
+   - what was tried (commands, file paths)
+   - what failed and why (error messages, exit codes)
+   - one specific question that would unblock you
+
+Looping past three is worse than asking. Operator time costs less than wrong code.
+
+## Confidence levels
+
+When stating something, label your certainty:
+
+- **Fact** — verified by reading code, running a check, or quoting documentation.
+- **Assumption** — reasonable inference, not verified. Tag with `[unverified]` so the operator knows.
+- **Don't know** — say it. Never fabricate a number, file path, or API behaviour. "I don't know" is always better than a plausible lie.
+
 ## Workflow
 
 - Prefer small, reversible changes over large rewrites.
