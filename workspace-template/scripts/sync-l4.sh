@@ -8,10 +8,17 @@ AGENT_NAME="${AGENT_NAME:-$(basename "$(dirname "$WS")")}"
 OV_HOST="${OV_HOST:-http://127.0.0.1:1933}"
 OV_ACCOUNT="${OV_ACCOUNT:-default}"
 DATE="$(date -u '+%Y-%m-%d')"
-LOG="/tmp/sync-l4.log"
+# OV_FULL=1 → don't tail HOT to last 200 lines; ship the whole journal.
+# Set by the PreCompact hook (flush-to-openviking.sh) so we don't drop the
+# 600+ lines that are about to be summarised away by Claude's auto-compact.
+# Default cron path keeps the tail to bound payload size.
+OV_FULL="${OV_FULL:-0}"
+LOG_DIR="${WS}/logs"
+[ -d "$LOG_DIR" ] || LOG_DIR="/tmp"
+LOG="${LOG_DIR}/memory-cron.log"
 
-log() { echo "$(date -u '+%H:%M:%S') $*" >>"$LOG"; }
-echo "=== sync-l4.sh $(date -u '+%Y-%m-%dT%H:%M:%SZ') ===" >>"$LOG"
+log() { echo "$(date -u '+%H:%M:%S') [sync-l4] $*" >>"$LOG"; }
+echo "=== sync-l4.sh $(date -u '+%Y-%m-%dT%H:%M:%SZ') (OV_FULL=${OV_FULL}) ===" >>"$LOG"
 
 # Resolve API key.
 if [ -z "${OV_KEY:-}" ]; then
@@ -28,8 +35,14 @@ WARM="${WS}/core/warm/decisions.md"
 
 CONTENT=""
 if [ -f "$HOT" ]; then
-    HOT_CONTENT="$(tail -n 200 "$HOT")"
-    [ -n "$HOT_CONTENT" ] && CONTENT="# HOT (last 200 lines of recent.md)
+    if [ "$OV_FULL" = "1" ]; then
+        HOT_CONTENT="$(cat "$HOT")"
+        HOT_LABEL="# HOT (full recent.md — pre-compact flush)"
+    else
+        HOT_CONTENT="$(tail -n 200 "$HOT")"
+        HOT_LABEL="# HOT (last 200 lines of recent.md)"
+    fi
+    [ -n "$HOT_CONTENT" ] && CONTENT="${HOT_LABEL}
 
 ${HOT_CONTENT}"
 fi

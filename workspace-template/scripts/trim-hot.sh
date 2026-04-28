@@ -8,12 +8,16 @@ WS="${AGENT_WORKSPACE:-${HOME}/.claude-lab/$(basename "$(dirname "$(dirname "$(r
 HOT="${WS}/core/hot/recent.md"
 WARM="${WS}/core/warm/decisions.md"
 LOCKFILE="/tmp/trim-hot.lock"
-LOG="/tmp/trim-hot.log"
+# Single consolidated cron log per workspace — survives reboots, easy to grep.
+# Falls back to /tmp on first run before installer creates logs/.
+LOG_DIR="${WS}/logs"
+[ -d "$LOG_DIR" ] || LOG_DIR="/tmp"
+LOG="${LOG_DIR}/memory-cron.log"
 MAX_AGE_HOURS="${MAX_AGE_HOURS:-24}"
 MAX_ENTRIES="${MAX_ENTRIES:-40}"
 SONNET_BUDGET="${SONNET_BUDGET:-0.15}"
 
-log() { echo "$(date -u '+%H:%M:%S') $*" >>"$LOG"; }
+log() { echo "$(date -u '+%H:%M:%S') [trim-hot] $*" >>"$LOG"; }
 echo "=== trim-hot.sh $(date -u '+%Y-%m-%dT%H:%M:%SZ') ===" >>"$LOG"
 
 [ -f "$HOT" ] || { log "no recent.md, skip"; exit 0; }
@@ -97,7 +101,10 @@ Rules:
 Dialog:
 $(cat "$OLD_TEXT")"
 
+    # --max-budget-usd is a hard cap so a runaway prompt can't burn $$$ on cron.
+    # If claude rejects the flag (older binary), fall back to bash extraction.
     SONNET_RESULT=$(cd /tmp && echo "$SONNET_PROMPT" | claude --model sonnet --print \
+        --max-budget-usd "$SONNET_BUDGET" \
         --append-system-prompt "You compress AI agent memory. Output ONLY lines starting with '- YYYY-MM-DD HH:MM: '." \
         2>/dev/null) || SONNET_RESULT=""
 

@@ -19,6 +19,7 @@ install_cron_for_agent() {
 
     cat >"$file" <<CRON
 # Telegram Claude Platform — memory rotation for ${name} (user=${user})
+# tcp-installer: memory rotation v${INSTALLER_VERSION:-dev} begin
 SHELL=/bin/bash
 PATH=/usr/local/bin:/usr/bin:/bin
 HOME=${home}
@@ -30,6 +31,7 @@ AGENT_WORKSPACE=${ws}
 0  6 * * * ${user} ${ws}/scripts/compress-warm.sh
 30 6 * * * ${user} ${ws}/scripts/sync-l4.sh
 0  21 * * * ${user} ${ws}/scripts/memory-rotate.sh
+# tcp-installer: memory rotation v${INSTALLER_VERSION:-dev} end
 CRON
     chmod 0644 "$file"
     chown root:root "$file"

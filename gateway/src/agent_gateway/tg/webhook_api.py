@@ -75,13 +75,25 @@ class WebhookAPI:
         except Exception:  # noqa: BLE001
             return web.json_response({"error": "invalid json"}, status=400)
 
-        agent = payload.get("agent")
-        chat_id = payload.get("chat_id")
-        text = payload.get("text", "")
+        # Accept both naming conventions:
+        # - Pythonic (our default):  {"agent", "chat_id", "text", "thread_id"}
+        # - Workshop / camelCase:    {"agentId", "chatId", "message", "threadId"}
+        # Operators copy-pasting curl examples from the edgelab.su workshop hit
+        # the camelCase form; we silently normalise so neither breaks.
+        agent = payload.get("agent") or payload.get("agentId")
+        chat_id = payload.get("chat_id") or payload.get("chatId")
+        text = payload.get("text") or payload.get("message") or ""
+        thread_id = payload.get("thread_id") or payload.get("threadId")
 
         if not agent or not chat_id or not text:
             return web.json_response(
-                {"error": "missing fields: agent, chat_id, text"}, status=400
+                {
+                    "error": (
+                        "missing fields: need (agent or agentId), "
+                        "(chat_id or chatId), (text or message)"
+                    )
+                },
+                status=400,
             )
 
         consumer = self.consumers.get(agent)
@@ -92,9 +104,10 @@ class WebhookAPI:
             chat_id=int(chat_id),
             user_id=0,
             message_id=0,
-            thread_id=payload.get("thread_id"),
+            thread_id=thread_id,
             text=text,
             is_oob=False,
+            source="webhook",
         )
         await consumer.queue.put(msg)
         return web.json_response({"status": "queued", "agent": agent})

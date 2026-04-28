@@ -62,28 +62,59 @@ def append_turn(
         log.exception("[hot] append failed for %s", hot_file)
 
 
+_TRIM_LOCKFILE = Path("/tmp/trim-hot.lock")
+
+
 def _emergency_trim(hot_file: Path, current_size: int) -> None:
+    """Emergency-trim recent.md when it crosses ``EMERGENCY_TRIM_BYTES``.
+
+    Coordinates with cron's trim-hot.sh via the same lockfile (``/tmp/trim-
+    hot.lock``). If cron is mid-Sonnet-compression, we skip the gateway-side
+    trim — cron will rewrite the file shortly anyway. This prevents the race
+    where cron's pending overwrite stomps our trim's writes.
+    """
     log.warning("[hot] %s size %dB exceeds %dB — emergency trim",
                 hot_file, current_size, EMERGENCY_TRIM_BYTES)
-    text = hot_file.read_text(encoding="utf-8")
-    lines = text.split("\n")
-    if len(lines) <= KEEP_LINES:
+
+    # Try to acquire the same lock cron uses. Non-blocking: if cron has it,
+    # bail out — cron will produce an even-better-compressed result soon.
+    try:
+        lock_fd = open(_TRIM_LOCKFILE, "w")
+    except OSError:
+        log.warning("[hot] cannot open trim lockfile, skipping emergency trim")
         return
-
-    kept = lines[-KEEP_LINES:]
-    # Don't start mid-entry: skip until we hit the next "### " header.
-    for i, ln in enumerate(kept):
-        if ln.startswith("### "):
-            kept = kept[i:]
-            break
-
-    header = "# HOT memory — full rolling 24h journal\n"
-    new = header + "\n" + "\n".join(kept)
-    with hot_file.open("w", encoding="utf-8") as f:
-        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+    try:
         try:
-            f.write(new)
-            f.flush()
-        finally:
-            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-    log.warning("[hot] emergency trim complete: %dB → %dB", current_size, len(new))
+            fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            log.info("[hot] cron is mid-trim — skipping gateway emergency trim")
+            return
+
+        text = hot_file.read_text(encoding="utf-8")
+        lines = text.split("\n")
+        if len(lines) <= KEEP_LINES:
+            return
+
+        kept = lines[-KEEP_LINES:]
+        # Don't start mid-entry: skip until we hit the next "### " header.
+        for i, ln in enumerate(kept):
+            if ln.startswith("### "):
+                kept = kept[i:]
+                break
+
+        header = "# HOT memory — full rolling 24h journal\n"
+        new = header + "\n" + "\n".join(kept)
+        with hot_file.open("w", encoding="utf-8") as f:
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            try:
+                f.write(new)
+                f.flush()
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        log.warning("[hot] emergency trim complete: %dB → %dB", current_size, len(new))
+    finally:
+        try:
+            fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
+        except Exception:  # noqa: BLE001
+            pass
+        lock_fd.close()

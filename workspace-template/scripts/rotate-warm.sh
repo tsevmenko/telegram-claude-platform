@@ -6,10 +6,12 @@ set -euo pipefail
 WS="${AGENT_WORKSPACE:-${HOME}/.claude-lab/$(basename "$(dirname "$(dirname "$(realpath "$0")")")")/.claude}"
 WARM="${WS}/core/warm/decisions.md"
 COLD="${WS}/core/MEMORY.md"
-LOG="/tmp/rotate-warm.log"
+LOG_DIR="${WS}/logs"
+[ -d "$LOG_DIR" ] || LOG_DIR="/tmp"
+LOG="${LOG_DIR}/memory-cron.log"
 MAX_AGE_DAYS="${MAX_AGE_DAYS:-14}"
 
-log() { echo "$(date -u '+%H:%M:%S') $*" >>"$LOG"; }
+log() { echo "$(date -u '+%H:%M:%S') [rotate-warm] $*" >>"$LOG"; }
 echo "=== rotate-warm.sh $(date -u '+%Y-%m-%dT%H:%M:%SZ') ===" >>"$LOG"
 
 [ -f "$WARM" ] || { log "no decisions.md, skip"; exit 0; }

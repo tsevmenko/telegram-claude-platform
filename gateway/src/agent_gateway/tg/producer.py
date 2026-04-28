@@ -53,13 +53,19 @@ def build_router(
         if not text:
             log.warning("[%s] voice transcription failed", consumer.name)
             return
+        # Echo the transcript back as italic so the operator sees what we
+        # actually heard before the long answer arrives. If Whisper mishears,
+        # they can /stop and re-record instead of waiting for a wrong reply.
+        await _echo_voice_transcript(consumer.bot, message, text)
         await consumer.queue.put(_make_msg(message, text, source="tg-voice"))
 
     @router.message(F.text)
     async def _text_handler(message: Message) -> None:
         if not _accept(message, allowed_user_ids, allowed_group_ids, consumer, bot_username):
             return
-        enriched, source = _build_text_with_context(message)
+        # consumer.cfg.bot_user_id is set once at startup via cache_getme().
+        self_bot_id = getattr(consumer.cfg, "bot_user_id", None)
+        enriched, source = _build_text_with_context(message, self_bot_id=self_bot_id)
         await consumer.queue.put(_make_msg(message, enriched, source=source))
 
     return router
@@ -103,7 +109,9 @@ def _make_msg(
     )
 
 
-def _build_text_with_context(message: Message) -> tuple[str, str]:
+def _build_text_with_context(
+    message: Message, self_bot_id: int | None = None
+) -> tuple[str, str]:
     """Build the text the agent sees, prefixed with reply/forward context.
 
     Returns ``(enriched_text, source_tag)``.
@@ -121,6 +129,11 @@ def _build_text_with_context(message: Message) -> tuple[str, str]:
     Both can apply at once (forward of a reply). Forward takes priority for
     the source tag because the message body is wholly third-party in that
     case.
+
+    ``self_bot_id``: pass our own ``getMe().id`` so we only skip injection for
+    replies to OUR bot (whose output is already in the session history).
+    Replies to a different bot in the same group should still inject context.
+    Falls back to the broader "any-bot" check if id is None.
     """
     text = message.text or message.caption or ""
     parts: list[str] = []
@@ -139,7 +152,11 @@ def _build_text_with_context(message: Message) -> tuple[str, str]:
     reply = getattr(message, "reply_to_message", None)
     if reply is not None:
         reply_user = getattr(reply, "from_user", None)
-        is_self_reply = bool(reply_user and getattr(reply_user, "is_bot", False))
+        if self_bot_id is not None and reply_user is not None:
+            is_self_reply = getattr(reply_user, "id", None) == self_bot_id
+        else:
+            # Fallback when getMe id isn't cached yet (very early startup).
+            is_self_reply = bool(reply_user and getattr(reply_user, "is_bot", False))
         body = ((reply.text if reply.text is not None else None)
                 or getattr(reply, "caption", None)
                 or "")
@@ -198,6 +215,31 @@ def _allowed(message: Message, allowed_user_ids: set[int]) -> bool:
     if not message.from_user:
         return False
     return message.from_user.id in allowed_user_ids
+
+
+async def _echo_voice_transcript(bot: Bot, message: Message, text: str) -> None:
+    """Send the transcribed voice back to the same chat/thread as italic.
+
+    Trims to 500 chars to avoid creating a wall of text on long monologues.
+    Best-effort — failure is logged but doesn't block the agent turn.
+    """
+    from html import escape as html_escape
+    snippet = text.strip()
+    if not snippet:
+        return
+    if len(snippet) > 500:
+        snippet = snippet[:497] + "…"
+    body = f"<i>🎙 {html_escape(snippet)}</i>"
+    try:
+        await bot.send_message(
+            chat_id=message.chat.id,
+            message_thread_id=message.message_thread_id,
+            text=body,
+            parse_mode="HTML",
+            reply_to_message_id=message.message_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.warning("voice transcript echo failed: %s", exc)
 
 
 def attach_to_dispatcher(dp: Dispatcher, bot: Bot, router: Router) -> None:

@@ -122,6 +122,21 @@ class MultiAgentGateway:
             except Exception as exc:  # noqa: BLE001
                 log.warning("set_my_commands failed: %s", exc)
 
+        # Cache each agent's bot user id for self-reply detection. Without
+        # this, our reply-context heuristic conservatively skips all bot
+        # replies, including replies to OTHER bots in the same group — those
+        # ought to inject context. With the id cached we skip only our own.
+        for name, consumer in self.consumers.items():
+            try:
+                me = await consumer.bot.get_me()
+                # Pydantic models in aiogram are immutable by default; stash
+                # the id on the cfg dict-like instance attribute.
+                object.__setattr__(consumer.cfg, "bot_user_id", me.id)
+                log.info("[%s] bot user id cached: %s (@%s)", name, me.id, me.username)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("[%s] get_me failed, self-reply detection degraded: %s",
+                            name, exc)
+
         webhook: WebhookAPI | None = None
         if self.config.webhook.enabled and self.config.webhook.token_file:
             webhook = WebhookAPI(

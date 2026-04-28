@@ -7,12 +7,14 @@ set -euo pipefail
 WS="${AGENT_WORKSPACE:-${HOME}/.claude-lab/$(basename "$(dirname "$(dirname "$(realpath "$0")")")")/.claude}"
 WARM="${WS}/core/warm/decisions.md"
 LOCKFILE="/tmp/compress-warm.lock"
-LOG="/tmp/compress-warm.log"
+LOG_DIR="${WS}/logs"
+[ -d "$LOG_DIR" ] || LOG_DIR="/tmp"
+LOG="${LOG_DIR}/memory-cron.log"
 MIN_SIZE="${MIN_SIZE:-10240}"
 MIN_LINES="${MIN_LINES:-50}"
 SONNET_BUDGET="${SONNET_BUDGET:-0.15}"
 
-log() { echo "$(date -u '+%H:%M:%S') $*" >>"$LOG"; }
+log() { echo "$(date -u '+%H:%M:%S') [compress-warm] $*" >>"$LOG"; }
 echo "=== compress-warm.sh $(date -u '+%Y-%m-%dT%H:%M:%SZ') ===" >>"$LOG"
 
 [ -f "$WARM" ] || { log "no decisions.md, skip"; exit 0; }
@@ -64,6 +66,7 @@ Entries:
 ${BODY_CONTENT}"
 
 RESULT=$(cd /tmp && echo "$PROMPT" | claude --model sonnet --print \
+    --max-budget-usd "$SONNET_BUDGET" \
     --append-system-prompt "Compress memory logs into key facts. Output ONLY lines starting with '- '. Group by topic." \
     2>/dev/null) || RESULT=""
 
