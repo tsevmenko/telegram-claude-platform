@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from aiogram import Bot
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
+from aiogram.types import FSInputFile
 
 from pathlib import Path
 
@@ -59,6 +60,10 @@ class IncomingMessage:
     text: str
     is_oob: bool = False
     oob_command: str = ""
+    # Source tag passed through to HOT memory. Producer sets this based on
+    # how the message arrived: "tg-text", "tg-voice", "forwarded", "replied",
+    # "webhook". Defaults to "tg-text".
+    source: str = "tg-text"
 
 
 class AgentConsumer:
@@ -165,6 +170,10 @@ class AgentConsumer:
 
         final_text = tracker.render_final()
         await self._finalise(status_msg, msg, final_text)
+        # Auto-send any files the agent wrote with Write/Edit. Path-traversal
+        # guard: only files inside the workspace ship; absolute paths outside
+        # (e.g. `/etc/passwd`) are silently skipped to avoid exfiltration.
+        await self._send_written_files(msg, tracker.written_files)
         # Persist HOT journal turn — never blocks reply (already sent above).
         await asyncio.to_thread(
             hot_append_turn,
@@ -172,15 +181,20 @@ class AgentConsumer:
             self.name,
             msg.text,
             final_text,
-            "tg-text",
+            msg.source,
         )
 
         # Fire-and-forget L4 push (bounded executor — never blocks).
         if self.l4 is not None:
-            self.l4.push(self.name, msg.chat_id, msg.text, final_text, "tg-text")
+            self.l4.push(self.name, msg.chat_id, msg.text, final_text, msg.source)
 
     async def _handle_oob(self, msg: IncomingMessage) -> None:
         cmd = msg.oob_command
+        # Honour /reset force (split on whitespace from raw text) — author's
+        # graceful-default pattern: bare /reset writes a handoff first; only
+        # `/reset force` matches the v1 instant-kill behaviour.
+        is_force = bool(msg.text and "force" in msg.text.split()[1:])
+
         if cmd in ("/stop", "/cancel"):
             killed = await self.runner.kill(self.name, msg.chat_id)
             await self.bot.send_message(
@@ -189,26 +203,39 @@ class AgentConsumer:
                 text="stopped." if killed else "nothing to stop.",
             )
         elif cmd == "/status":
-            active = (self.name, msg.chat_id) in self.runner.active
             await self.bot.send_message(
                 chat_id=msg.chat_id,
                 message_thread_id=msg.thread_id,
-                text="working" if active else "idle",
+                text=self._render_status(msg.chat_id),
             )
         elif cmd == "/reset":
+            if is_force:
+                # Instant kill, no handoff. v1 behaviour preserved.
+                await self.runner.kill(self.name, msg.chat_id)
+                self.sessions.reset(self.name, msg.chat_id)
+                await self.bot.send_message(
+                    chat_id=msg.chat_id,
+                    message_thread_id=msg.thread_id,
+                    text="session force-reset. handoff skipped.",
+                )
+            else:
+                summary = self._save_handoff(msg.chat_id)
+                await self.runner.kill(self.name, msg.chat_id)
+                self.sessions.reset(self.name, msg.chat_id)
+                await self.bot.send_message(
+                    chat_id=msg.chat_id,
+                    message_thread_id=msg.thread_id,
+                    text=f"session reset. {summary}",
+                )
+        elif cmd == "/new":
+            # /new = graceful reset.
+            summary = self._save_handoff(msg.chat_id)
             await self.runner.kill(self.name, msg.chat_id)
             self.sessions.reset(self.name, msg.chat_id)
             await self.bot.send_message(
                 chat_id=msg.chat_id,
                 message_thread_id=msg.thread_id,
-                text="session reset. next message starts fresh.",
-            )
-        elif cmd == "/new":
-            self.sessions.reset(self.name, msg.chat_id)
-            await self.bot.send_message(
-                chat_id=msg.chat_id,
-                message_thread_id=msg.thread_id,
-                text="new session started.",
+                text=f"new session started. {summary}",
             )
         elif cmd == "/compact":
             reply = await self._run_compact()
@@ -217,6 +244,124 @@ class AgentConsumer:
                 message_thread_id=msg.thread_id,
                 text=reply,
             )
+
+    def _render_status(self, chat_id: int) -> str:
+        """Render multi-line status block for /status."""
+        wsp = Path(self.cfg.workspace)
+        active = (self.name, chat_id) in self.runner.active
+        state = "working" if active else "idle"
+
+        # File sizes for the four memory layers.
+        sizes: list[str] = []
+        for label, rel in (
+            ("rules.md", "core/rules.md"),
+            ("decisions.md", "core/warm/decisions.md"),
+            ("recent.md", "core/hot/recent.md"),
+            ("MEMORY.md", "core/MEMORY.md"),
+        ):
+            p = wsp / rel
+            if p.is_file():
+                size_kb = p.stat().st_size / 1024
+                sizes.append(f"  {label:<14}{size_kb:>6.1f} KB")
+            else:
+                sizes.append(f"  {label:<14}(missing)")
+
+        # Session age + turn count.
+        sid_path = self.sessions.path_for(self.name, chat_id)
+        age_line = "  session: (none)"
+        if sid_path.is_file():
+            import time
+
+            age_sec = max(0.0, time.time() - sid_path.stat().st_mtime)
+            hours = int(age_sec // 3600)
+            mins = int((age_sec % 3600) // 60)
+            sid = sid_path.read_text(encoding="utf-8").strip()[:8]
+            age_line = f"  session: {sid}… (age {hours}h {mins}m)"
+
+        recent_path = wsp / "core" / "hot" / "recent.md"
+        if recent_path.is_file():
+            text = recent_path.read_text(encoding="utf-8", errors="replace")
+            turns = sum(1 for ln in text.splitlines() if ln.startswith("### "))
+        else:
+            turns = 0
+
+        lines = [
+            f"status: {state}",
+            age_line,
+            f"  turns in HOT: {turns}",
+            "memory:",
+            *sizes,
+        ]
+        return "\n".join(lines)
+
+    def _save_handoff(self, chat_id: int) -> str:
+        """Save a session handoff before /reset destroys the session.
+
+        Strategy:
+        - Take the last ~10 entries from recent.md (those are 'this session'
+          since last cron rotation), copy into hot/handoff.md (overwriting).
+        - Append a date-stamped section to MEMORY.md so the next session can
+          discover what happened in the last one.
+
+        Cheap and offline — does not invoke claude. The author's gateway uses
+        Sonnet for richer summaries; we get most of the benefit at zero cost
+        and zero latency by just preserving the raw entries.
+
+        Returns a short status string for the operator reply.
+        """
+        wsp = Path(self.cfg.workspace)
+        recent = wsp / "core" / "hot" / "recent.md"
+        handoff = wsp / "core" / "hot" / "handoff.md"
+        memory = wsp / "core" / "MEMORY.md"
+
+        if not recent.is_file():
+            return "(no recent.md — handoff skipped)"
+
+        text = recent.read_text(encoding="utf-8", errors="replace")
+        # Find the last ~10 entries: split on `### ` headers (which start each
+        # turn block), keep the trailing 10.
+        blocks: list[str] = []
+        current: list[str] = []
+        for line in text.splitlines():
+            if line.startswith("### "):
+                if current:
+                    blocks.append("\n".join(current))
+                current = [line]
+            elif current:
+                current.append(line)
+        if current:
+            blocks.append("\n".join(current))
+
+        last_10 = blocks[-10:] if blocks else []
+        if not last_10:
+            return "(empty session — handoff skipped)"
+
+        import time
+
+        ts = time.strftime("%Y-%m-%d %H:%M")
+        try:
+            handoff.parent.mkdir(parents=True, exist_ok=True)
+            handoff.write_text(
+                f"# Handoff (saved {ts})\n\n" + "\n\n".join(last_10) + "\n",
+                encoding="utf-8",
+            )
+        except Exception:  # noqa: BLE001
+            log.exception("[%s] failed to write handoff.md", self.name)
+            return "(handoff write failed — see logs)"
+
+        # Append a one-line breadcrumb to MEMORY.md so the next session has a
+        # discoverable trail of when sessions ended.
+        try:
+            memory.parent.mkdir(parents=True, exist_ok=True)
+            with memory.open("a", encoding="utf-8") as f:
+                f.write(
+                    f"\n## {ts} (session ended)\n"
+                    f"- {len(last_10)} entries handed off to handoff.md.\n"
+                )
+        except Exception:  # noqa: BLE001
+            log.exception("[%s] failed to append MEMORY.md", self.name)
+
+        return f"handoff saved ({len(last_10)} entries)."
 
     async def _run_compact(self) -> str:
         """Trigger trim-hot.sh for this agent's workspace.
@@ -357,6 +502,76 @@ class AgentConsumer:
                 disable_web_page_preview=True,
                 reply_markup=keyboard if is_last else None,
             )
+
+    # ------------------------------------------------------------------
+    # sendDocument auto-emit
+    # ------------------------------------------------------------------
+
+    SEND_DOCUMENT_MAX_BYTES = 50 * 1024 * 1024  # Telegram bot doc limit
+
+    async def _send_written_files(
+        self, msg: IncomingMessage, paths: list[str]
+    ) -> None:
+        """Emit each unique file the agent created via Write/Edit.
+
+        Two safety gates:
+        - **Path traversal guard.** Resolved path must be inside the agent's
+          workspace. Without this, a malicious or confused turn could
+          ``Write /etc/passwd`` and we'd happily ship it.
+        - **Size cap.** Telegram rejects bot documents > 50MB. Skip with a log
+          warning rather than letting the turn fail.
+
+        Dedup by resolved path so the same file written 3 times in one turn
+        ships exactly once.
+        """
+        if not paths:
+            return
+        wsp = Path(self.cfg.workspace).resolve()
+        sent: set[Path] = set()
+        for raw in paths:
+            try:
+                resolved = Path(raw).resolve()
+            except (OSError, ValueError):
+                log.warning("[%s] cannot resolve write path: %s", self.name, raw)
+                continue
+            if resolved in sent:
+                continue
+            if not resolved.is_file():
+                continue
+            try:
+                if not resolved.is_relative_to(wsp):
+                    log.warning(
+                        "[%s] refusing to send file outside workspace: %s",
+                        self.name, resolved,
+                    )
+                    continue
+            except AttributeError:
+                # Python < 3.9 fallback (we require 3.11 but be defensive).
+                if not str(resolved).startswith(str(wsp)):
+                    continue
+            try:
+                size = resolved.stat().st_size
+            except OSError:
+                continue
+            if size == 0:
+                continue
+            if size > self.SEND_DOCUMENT_MAX_BYTES:
+                log.warning(
+                    "[%s] file %s is %d bytes — too large for Telegram doc",
+                    self.name, resolved, size,
+                )
+                continue
+            try:
+                await self.bot.send_document(
+                    chat_id=msg.chat_id,
+                    message_thread_id=msg.thread_id,
+                    document=FSInputFile(str(resolved)),
+                )
+                sent.add(resolved)
+            except Exception:  # noqa: BLE001
+                log.exception(
+                    "[%s] failed to send document %s", self.name, resolved
+                )
 
     async def _replace_with_error(self, status_msg, detail: str) -> None:
         text = f"<i>error: {escape_html(detail[:300])}</i>"

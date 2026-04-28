@@ -1,0 +1,205 @@
+"""Tests for Phase 3b: reply-context injection, forward-tag, HOT source-tag."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from types import SimpleNamespace
+
+from agent_gateway.consumer import IncomingMessage
+from agent_gateway.memory.hot import append_turn
+from agent_gateway.tg.producer import (
+    _build_text_with_context,
+    _forward_origin_name,
+    _make_msg,
+)
+
+
+# ---------------------------------------------------------------------------
+# IncomingMessage.source field
+# ---------------------------------------------------------------------------
+
+
+def test_incoming_message_source_defaults_to_tg_text() -> None:
+    m = IncomingMessage(chat_id=1, user_id=2, message_id=3, thread_id=None, text="x")
+    assert m.source == "tg-text"
+
+
+def test_make_msg_passes_source() -> None:
+    fake_msg = SimpleNamespace(
+        chat=SimpleNamespace(id=10),
+        from_user=SimpleNamespace(id=20),
+        message_id=30,
+        message_thread_id=None,
+        forward_origin=None,
+        reply_to_message=None,
+        text="hi",
+    )
+    msg = _make_msg(fake_msg, "hi", source="tg-voice")
+    assert msg.source == "tg-voice"
+
+
+# ---------------------------------------------------------------------------
+# _build_text_with_context
+# ---------------------------------------------------------------------------
+
+
+def _msg(
+    text: str,
+    *,
+    forward_origin: object | None = None,
+    reply: object | None = None,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        text=text,
+        caption=None,
+        forward_origin=forward_origin,
+        reply_to_message=reply,
+    )
+
+
+def test_plain_text_no_enrichment() -> None:
+    enriched, source = _build_text_with_context(_msg("hello"))
+    assert enriched == "hello"
+    assert source == "tg-text"
+
+
+def test_forward_from_user_tags_origin() -> None:
+    fwd = SimpleNamespace(
+        sender_user=SimpleNamespace(full_name="Alice Smith", first_name="Alice"),
+    )
+    enriched, source = _build_text_with_context(_msg("see this", forward_origin=fwd))
+    assert "[Forwarded from: Alice Smith]" in enriched
+    assert "see this" in enriched
+    assert source == "forwarded"
+
+
+def test_forward_from_hidden_user() -> None:
+    """MessageOriginHiddenUser exposes only sender_user_name (privacy mode)."""
+    fwd = SimpleNamespace(sender_user=None, sender_user_name="hidden_user_42")
+    enriched, _ = _build_text_with_context(_msg("body", forward_origin=fwd))
+    assert "[Forwarded from: hidden_user_42]" in enriched
+
+
+def test_forward_from_channel() -> None:
+    fwd = SimpleNamespace(
+        sender_user=None,
+        sender_user_name=None,
+        chat=SimpleNamespace(title="My News Channel", username="news"),
+    )
+    enriched, _ = _build_text_with_context(_msg("body", forward_origin=fwd))
+    assert "[Forwarded from: My News Channel]" in enriched
+
+
+def test_reply_to_non_bot_injects_untrusted_block() -> None:
+    reply = SimpleNamespace(
+        from_user=SimpleNamespace(is_bot=False, full_name="Bob"),
+        text="please repackage as HTML",
+        caption=None,
+    )
+    enriched, source = _build_text_with_context(
+        _msg("do it now", reply=reply)
+    )
+    assert "[Replied message (untrusted metadata, for context only):]" in enriched
+    assert "please repackage as HTML" in enriched
+    assert "---" in enriched
+    assert "do it now" in enriched
+    assert source == "replied"
+
+
+def test_reply_to_self_bot_does_not_inject() -> None:
+    """Replying to our own bot's prior message → no injection (already in
+    session history)."""
+    reply = SimpleNamespace(
+        from_user=SimpleNamespace(is_bot=True, full_name="MyBot"),
+        text="here is the answer",
+        caption=None,
+    )
+    enriched, source = _build_text_with_context(_msg("more please", reply=reply))
+    assert "untrusted metadata" not in enriched
+    assert source == "tg-text"
+
+
+def test_reply_with_empty_body_is_noop() -> None:
+    reply = SimpleNamespace(
+        from_user=SimpleNamespace(is_bot=False),
+        text="",
+        caption=None,
+    )
+    enriched, source = _build_text_with_context(_msg("hi", reply=reply))
+    assert enriched == "hi"
+    assert source == "tg-text"
+
+
+def test_forward_and_reply_combined() -> None:
+    fwd = SimpleNamespace(sender_user=SimpleNamespace(full_name="Channel Bot"))
+    reply = SimpleNamespace(
+        from_user=SimpleNamespace(is_bot=False),
+        text="earlier message",
+        caption=None,
+    )
+    enriched, source = _build_text_with_context(
+        _msg("act on this", forward_origin=fwd, reply=reply)
+    )
+    # Forward wins for source tag; both blocks present in body.
+    assert "[Forwarded from: Channel Bot]" in enriched
+    assert "[Replied message" in enriched
+    assert source == "forwarded"
+
+
+def test_reply_body_truncated_at_500_chars() -> None:
+    long_body = "x" * 1000
+    reply = SimpleNamespace(
+        from_user=SimpleNamespace(is_bot=False),
+        text=long_body,
+        caption=None,
+    )
+    enriched, _ = _build_text_with_context(_msg("ack", reply=reply))
+    # 500 chars of x → followed by "---" separator
+    assert "x" * 500 in enriched
+    assert "x" * 501 not in enriched
+
+
+# ---------------------------------------------------------------------------
+# _forward_origin_name fallbacks
+# ---------------------------------------------------------------------------
+
+
+def test_forward_origin_name_unknown_when_empty() -> None:
+    assert _forward_origin_name(SimpleNamespace()) == "unknown"
+
+
+def test_forward_origin_name_falls_back_first_name() -> None:
+    origin = SimpleNamespace(
+        sender_user=SimpleNamespace(full_name=None, first_name="Charlie")
+    )
+    assert _forward_origin_name(origin) == "Charlie"
+
+
+# ---------------------------------------------------------------------------
+# hot.append_turn — source tag is preserved in the journal entry
+# ---------------------------------------------------------------------------
+
+
+def test_hot_append_writes_source_tag(tmp_path: Path) -> None:
+    workspace = tmp_path / ".claude"
+    (workspace / "core" / "hot").mkdir(parents=True)
+    (workspace / "core" / "hot" / "recent.md").write_text("# HOT\n")
+
+    append_turn(workspace, "test", "user said", "agent replied", source_tag="replied")
+    text = (workspace / "core" / "hot" / "recent.md").read_text()
+    assert "[replied]" in text
+    assert "user said" in text
+    assert "agent replied" in text
+
+
+def test_hot_append_supports_all_source_kinds(tmp_path: Path) -> None:
+    workspace = tmp_path / ".claude"
+    (workspace / "core" / "hot").mkdir(parents=True)
+    (workspace / "core" / "hot" / "recent.md").write_text("# HOT\n")
+
+    for kind in ("tg-text", "tg-voice", "forwarded", "replied", "webhook"):
+        append_turn(workspace, "test", f"u-{kind}", f"a-{kind}", source_tag=kind)
+
+    text = (workspace / "core" / "hot" / "recent.md").read_text()
+    for kind in ("tg-text", "tg-voice", "forwarded", "replied", "webhook"):
+        assert f"[{kind}]" in text, f"missing source tag {kind} in HOT memory"
