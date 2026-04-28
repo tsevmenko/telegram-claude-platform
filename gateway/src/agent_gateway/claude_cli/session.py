@@ -36,3 +36,7 @@ class SessionStore:
         path = self._path(agent, chat_id)
         if path.exists():
             path.unlink()
+
+    def path_for(self, agent: str, chat_id: int) -> Path:
+        """Public accessor for the sid file path (used by /status to show age)."""
+        return self._path(agent, chat_id)
