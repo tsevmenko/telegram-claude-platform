@@ -19,8 +19,3 @@ SUPERPOWERS_SHA=04bad33282e792ecfd1007a138331f1e6b288eed
 
 # Optional opt-in (fill in when wiring agent-skills/skills/instagram-analytics/):
 # SCRAPECREATORS_SKILL_SHA=<commit-sha>  # qwwiwi/instagram-superpowers, instagram-hikerapi/
-
-# --- baseline / placeholder so verify_pins has at least one entry to test --
-
-# Self-pin: our own v0.1.0-baseline. Lets verify_pins exercise the happy path.
-SELF_BASELINE=v0.1.0-baseline

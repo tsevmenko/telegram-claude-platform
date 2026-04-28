@@ -127,15 +127,26 @@ def test_verify_pins_passes_when_pin_is_a_real_tag(tmp_path: Path) -> None:
         assert "NOT FOUND" in stderr or "verify_pins" in stderr
 
 
-def test_verify_pins_fails_on_404_pin(tmp_path: Path) -> None:
-    """Pin a deliberately-non-existent SHA → verify_pins must abort with rc=1."""
+def test_verify_pins_fails_on_unresolvable_pin(tmp_path: Path) -> None:
+    """Pin a deliberately-non-existent SHA → verify_pins must abort with rc=1.
+
+    GitHub returns 404 (repo gone), 422 (SHA invalid / repo disabled), or 451
+    (DMCA) for unresolvable references. All three should gate the install.
+
+    Use ``octocat/Hello-World`` as the repo — it's GitHub's perpetual demo
+    repo, guaranteed-public and never going away, so the only thing that can
+    fail here is the SHA lookup itself.
+    """
     rc, stdout, stderr = _run_verify_pins_with_temp_files(
         tmp_path,
         pins_content="DOES_NOT_EXIST=000000000000000000000000000000000000dead\n",
-        repos_content="DOES_NOT_EXIST=tsevmenko/telegram-claude-platform\n",
+        repos_content="DOES_NOT_EXIST=octocat/Hello-World\n",
     )
-    assert rc == 1, f"verify_pins must fail on 404; got rc={rc}, stderr={stderr!r}"
-    assert "NOT FOUND" in stderr or "Refusing to continue" in stderr
+    assert rc == 1, (
+        f"verify_pins must fail on unresolvable pin; "
+        f"got rc={rc}, stderr={stderr!r}"
+    )
+    assert "cannot resolve SHA" in stderr or "Refusing to continue" in stderr
 
 
 def test_verify_pins_fails_when_repo_mapping_missing(tmp_path: Path) -> None:

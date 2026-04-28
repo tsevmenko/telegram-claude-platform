@@ -69,9 +69,14 @@ verify_pins() {
             200|302)
                 log "verify_pins: ${name}=${sha} @ ${repo} OK"
                 ;;
-            404)
-                err "verify_pins: ${name}=${sha} @ ${repo} NOT FOUND (404)"
-                err "  → SHA was rebased, deleted, or repo moved. Update installer/PINS."
+            404|422|451)
+                # 404 — SHA / repo doesn't exist.
+                # 422 — invalid commit reference (rebased SHA on otherwise-OK repo,
+                #        OR repo flagged as disabled by GitHub).
+                # 451 — repo blocked for legal/DMCA reasons.
+                # All three mean "we cannot vouch for this SHA". Fail loudly.
+                err "verify_pins: ${name}=${sha} @ ${repo} returned HTTP ${code} — cannot resolve SHA"
+                err "  → SHA was rebased, deleted, repo disabled, or repo moved. Update installer/PINS."
                 fail=1
                 ;;
             "")
@@ -81,7 +86,8 @@ verify_pins() {
                 warn "verify_pins: ${name}=${sha} @ ${repo} curl error (no network?) — continuing"
                 ;;
             *)
-                # 5xx / rate-limit. Warn, don't fail.
+                # 5xx / 403 rate-limit / etc. — these are usually transient
+                # GitHub-side, not our pin going stale. Warn, don't fail.
                 warn "verify_pins: ${name}=${sha} @ ${repo} returned HTTP ${code} (continuing)"
                 ;;
         esac
