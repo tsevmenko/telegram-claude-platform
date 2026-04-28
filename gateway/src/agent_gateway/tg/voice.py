@@ -30,7 +30,12 @@ class VoiceTranscriber:
         self.language = language
 
     async def transcribe_voice(self, bot: Bot, file_id: str) -> str | None:
-        """Download a voice message by file_id, transcribe to text. Returns None on error."""
+        """Download a Telegram audio attachment by file_id, transcribe to text.
+
+        Works for ``voice``, ``audio``, and ``video_note`` types — all reach
+        Groq Whisper which auto-handles OGG/MP3/MP4/M4A. We rely on Groq's
+        media-type sniffing rather than enforcing extensions.
+        """
         path = await self._download(bot, file_id)
         if path is None:
             return None

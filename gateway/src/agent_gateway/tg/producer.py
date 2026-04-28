@@ -8,6 +8,7 @@ long-running ``claude`` subprocess is in flight.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from aiogram import Bot, Dispatcher, F, Router
@@ -17,6 +18,22 @@ from aiogram.types import Message
 from agent_gateway.consumer import AgentConsumer, IncomingMessage
 from agent_gateway.tg.group import is_addressed_to_agent
 from agent_gateway.tg.voice import VoiceTranscriber
+
+# Telegram caps bot file downloads at 20 MB. Documents larger than this
+# come through with `getFile` returning HTTP 413 — we surface a polite
+# "too big" message rather than crashing.
+TELEGRAM_BOT_DOWNLOAD_LIMIT = 20 * 1024 * 1024
+
+# Document MIME types we accept by default. Images, plain text, code, JSON,
+# CSV, PDF. We deliberately don't accept binary blobs (zip, exe, video) —
+# Claude can't do anything useful with them and they fill disk fast.
+ACCEPTED_DOC_MIME = {
+    "application/pdf",
+    "text/plain", "text/markdown", "text/csv", "text/html", "text/x-python",
+    "application/json", "application/yaml", "application/x-yaml",
+    "application/javascript", "application/typescript",
+    "image/png", "image/jpeg", "image/webp", "image/gif",
+}
 
 log = logging.getLogger(__name__)
 
@@ -50,22 +67,97 @@ def build_router(
                 return
             await _enqueue_oob(message, consumer, message.text or "")
 
-    @router.message(F.voice)
-    async def _voice_handler(message: Message) -> None:
+    @router.message(F.voice | F.audio | F.video_note)
+    async def _audio_handler(message: Message) -> None:
+        """Handle voice notes, music/audio uploads, and round video messages.
+
+        All three are run through Groq Whisper. ``video_note`` is the round
+        Telegram circle — Whisper accepts the underlying MP4 and pulls audio.
+        """
         if not _accept(message, allowed_user_ids, allowed_group_ids, consumer, bot_username):
             return
         if transcriber is None:
-            log.info("[%s] voice received but no transcriber configured", consumer.name)
+            log.info("[%s] audio received but no transcriber configured", consumer.name)
             return
-        text = await transcriber.transcribe_voice(consumer.bot, message.voice.file_id)
+
+        # Pick whichever attachment is set, in priority order.
+        attachment = message.voice or message.audio or message.video_note
+        if attachment is None:
+            return
+        kind = (
+            "tg-voice" if message.voice
+            else "tg-audio" if message.audio
+            else "tg-video-note"
+        )
+
+        text = await transcriber.transcribe_voice(consumer.bot, attachment.file_id)
         if not text:
-            log.warning("[%s] voice transcription failed", consumer.name)
+            log.warning("[%s] %s transcription failed", consumer.name, kind)
             return
-        # Echo the transcript back as italic so the operator sees what we
-        # actually heard before the long answer arrives. If Whisper mishears,
-        # they can /stop and re-record instead of waiting for a wrong reply.
+        # Echo back what we heard so the operator can /stop on misheard input.
         await _echo_voice_transcript(consumer.bot, message, text)
-        await consumer.queue.put(_make_msg(message, text, source="tg-voice"))
+        await consumer.queue.put(_make_msg(message, text, source=kind))
+
+    @router.message(F.sticker)
+    async def _sticker_handler(message: Message) -> None:
+        """Stickers can't be reasoned over directly. Treat as a soft ack:
+        emit one-line text describing the sticker (emoji + set) so the
+        operator's intent comes through if the next message references it."""
+        if not _accept(message, allowed_user_ids, allowed_group_ids, consumer, bot_username):
+            return
+        sticker = message.sticker
+        if sticker is None:
+            return
+        emoji = sticker.emoji or "🖼"
+        set_name = sticker.set_name or "(no set)"
+        text = f"[Sticker received: {emoji} (set: {set_name})]"
+        await consumer.queue.put(_make_msg(message, text, source="tg-sticker"))
+
+    @router.message(F.video | F.animation)
+    async def _video_handler(message: Message) -> None:
+        """Plain video / GIF — too big for Whisper, can't be Read'd as image.
+        Surface a polite ack instead of silent drop."""
+        if not _accept(message, allowed_user_ids, allowed_group_ids, consumer, bot_username):
+            return
+        kind = "video" if message.video else "animation"
+        await consumer.bot.send_message(
+            chat_id=message.chat.id,
+            message_thread_id=message.message_thread_id,
+            text=(
+                f"<i>I received a {kind} but can't process it yet. "
+                f"Send a screenshot or describe what's in it as text instead.</i>"
+            ),
+            parse_mode="HTML",
+        )
+
+    @router.message(F.location | F.contact | F.poll | F.dice)
+    async def _structured_handler(message: Message) -> None:
+        """Structured Telegram payloads — surface as text so they're not lost."""
+        if not _accept(message, allowed_user_ids, allowed_group_ids, consumer, bot_username):
+            return
+        if message.location:
+            text = (
+                f"[Location shared: lat={message.location.latitude}, "
+                f"lon={message.location.longitude}]"
+            )
+            source = "tg-location"
+        elif message.contact:
+            text = (
+                f"[Contact shared: {message.contact.first_name or ''} "
+                f"{message.contact.last_name or ''} "
+                f"({message.contact.phone_number or 'no phone'})]"
+            )
+            source = "tg-contact"
+        elif message.poll:
+            opts = ", ".join(o.text for o in message.poll.options[:5])
+            text = f"[Poll: {message.poll.question} — options: {opts}]"
+            source = "tg-poll"
+        elif message.dice:
+            text = f"[Dice rolled: {message.dice.emoji} = {message.dice.value}]"
+            source = "tg-dice"
+        else:
+            return
+        await consumer.queue.put(_make_msg(message, text, source=source))
 
     @router.message(F.text)
     async def _text_handler(message: Message) -> None:
@@ -75,6 +167,68 @@ def build_router(
         self_bot_id = getattr(consumer.cfg, "bot_user_id", None)
         enriched, source = _build_text_with_context(message, self_bot_id=self_bot_id)
         await consumer.queue.put(_make_msg(message, enriched, source=source))
+
+    @router.message(F.photo)
+    async def _photo_handler(message: Message) -> None:
+        if not _accept(message, allowed_user_ids, allowed_group_ids, consumer, bot_username):
+            return
+        try:
+            saved = await _save_telegram_attachment(
+                bot=consumer.bot,
+                message=message,
+                workspace=Path(consumer.cfg.workspace),
+                kind="photo",
+            )
+        except Exception:  # noqa: BLE001
+            log.exception("[%s] photo download failed", consumer.name)
+            return
+        if saved is None:
+            return
+        self_bot_id = getattr(consumer.cfg, "bot_user_id", None)
+        enriched = _build_photo_prompt(message, saved, self_bot_id=self_bot_id)
+        await consumer.queue.put(_make_msg(message, enriched, source="tg-photo"))
+
+    @router.message(F.document)
+    async def _document_handler(message: Message) -> None:
+        if not _accept(message, allowed_user_ids, allowed_group_ids, consumer, bot_username):
+            return
+        doc = message.document
+        # Reject binaries we can't usefully reason about.
+        mime = (doc.mime_type or "").lower()
+        if mime and mime not in ACCEPTED_DOC_MIME:
+            await consumer.bot.send_message(
+                chat_id=message.chat.id,
+                message_thread_id=message.message_thread_id,
+                text=f"<i>Skipped {doc.file_name or 'file'}: unsupported type ({mime})</i>",
+                parse_mode="HTML",
+            )
+            return
+        if doc.file_size and doc.file_size > TELEGRAM_BOT_DOWNLOAD_LIMIT:
+            await consumer.bot.send_message(
+                chat_id=message.chat.id,
+                message_thread_id=message.message_thread_id,
+                text=(
+                    f"<i>Skipped {doc.file_name or 'file'}: "
+                    f"{doc.file_size // (1024 * 1024)} MB exceeds 20 MB Telegram bot download cap</i>"
+                ),
+                parse_mode="HTML",
+            )
+            return
+        try:
+            saved = await _save_telegram_attachment(
+                bot=consumer.bot,
+                message=message,
+                workspace=Path(consumer.cfg.workspace),
+                kind="doc",
+            )
+        except Exception:  # noqa: BLE001
+            log.exception("[%s] document download failed", consumer.name)
+            return
+        if saved is None:
+            return
+        self_bot_id = getattr(consumer.cfg, "bot_user_id", None)
+        enriched = _build_document_prompt(message, saved, self_bot_id=self_bot_id)
+        await consumer.queue.put(_make_msg(message, enriched, source="tg-document"))
 
     return router
 
@@ -244,6 +398,103 @@ def _allowed(message: Message, allowed_user_ids: set[int]) -> bool:
     if not message.from_user:
         return False
     return message.from_user.id in allowed_user_ids
+
+
+async def _save_telegram_attachment(
+    bot: Bot,
+    message: Message,
+    workspace: Path,
+    kind: str,
+) -> Path | None:
+    """Download the photo (highest resolution) or document to the workspace.
+
+    Returns the absolute path Claude can Read. Files land at::
+
+        <workspace>/incoming/<msg_id>-<file_unique_id>.<ext>
+
+    The directory is auto-created. Old files (>7 days) are pruned by the
+    daily memory-rotate.sh cron. ``kind`` is "photo" or "doc" — drives the
+    file extension and which TG attachment field is consumed.
+    """
+    inbox = workspace / "incoming"
+    inbox.mkdir(parents=True, exist_ok=True)
+
+    if kind == "photo":
+        # Photos arrive as a list of PhotoSize sorted small→large.
+        # Take the largest — Claude needs the high-res one for OCR / detail.
+        if not message.photo:
+            return None
+        photo = message.photo[-1]
+        file_id = photo.file_id
+        unique = photo.file_unique_id
+        ext = ".jpg"
+    elif kind == "doc":
+        doc = message.document
+        if doc is None:
+            return None
+        file_id = doc.file_id
+        unique = doc.file_unique_id
+        # Preserve original extension if reasonable, else fall back by MIME.
+        original = (doc.file_name or "")
+        if "." in original and len(original.rsplit(".", 1)[-1]) <= 8:
+            ext = "." + original.rsplit(".", 1)[-1].lower()
+        elif (doc.mime_type or "").startswith("image/"):
+            ext = "." + doc.mime_type.split("/", 1)[1]
+        else:
+            ext = ""
+    else:
+        raise ValueError(f"unknown attachment kind: {kind}")
+
+    target = inbox / f"{message.message_id}-{unique}{ext}"
+    if target.exists():
+        # Idempotent: same file_unique_id → same path → reuse cached download.
+        return target.resolve()
+
+    await bot.download(file_id, destination=target)
+    return target.resolve()
+
+
+def _build_photo_prompt(
+    message: Message, image_path: Path, self_bot_id: int | None = None
+) -> str:
+    """Compose the user_text Claude sees for a photo turn.
+
+    We use an explicit prompt rather than relying on Claude Code's @-mention
+    auto-attachment, because the @-syntax is parsed in interactive CLI but
+    not always in stdin-fed `-p` mode. An explicit "use the Read tool"
+    instruction is reliable across CLI versions.
+    """
+    parts: list[str] = []
+    # Reply / forward enrichment first (same logic as text).
+    enriched_caption, _src = _build_text_with_context(message, self_bot_id=self_bot_id)
+    if enriched_caption.strip():
+        parts.append(enriched_caption.strip())
+    else:
+        parts.append("[image with no caption]")
+    parts.append("")
+    parts.append(
+        f"The operator attached an image. Use the Read tool to view it: "
+        f"{image_path}"
+    )
+    return "\n".join(parts)
+
+
+def _build_document_prompt(
+    message: Message, doc_path: Path, self_bot_id: int | None = None
+) -> str:
+    parts: list[str] = []
+    enriched_caption, _src = _build_text_with_context(message, self_bot_id=self_bot_id)
+    if enriched_caption.strip():
+        parts.append(enriched_caption.strip())
+    else:
+        parts.append("[document with no caption]")
+    fname = (message.document.file_name if message.document else "") or doc_path.name
+    parts.append("")
+    parts.append(
+        f"The operator attached a file `{fname}`. Use the Read tool to view it: "
+        f"{doc_path}"
+    )
+    return "\n".join(parts)
 
 
 async def _echo_voice_transcript(bot: Bot, message: Message, text: str) -> None:
