@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.2.2] — 2026-04-28 (live-VPS fixes from first fresh install)
+
+Three issues surfaced during the first end-to-end install on a clean DigitalOcean droplet.
+
+### Fixed
+
+- **`curl | bash` aborted at `40-secrets` with "VESNA_BOT_TOKEN is missing"**. `is_noninteractive()` was checking `[[ ! -t 0 ]]` (stdin) — under `curl | bash` stdin is the curl pipe, not a tty, so the gate flipped to non-interactive even though the operator was at a real terminal. All `read` calls already use `</dev/tty`; the gate now checks the same `/dev/tty` channel. (`639d965`)
+- **OOB commands (`/status`, `/stop`, `/reset`, `/compact`, `/cancel`, `/new`) bypassed `topic_routing`**. On the live VPS Leto answered `/status` in Vesna's Technical topic — both bots in the same forum group received the OOB and both processed it. The OOB handler skipped `_accept` entirely, intentionally to bypass the user-allowlist (panic-button semantics) but accidentally bypassing group + topic routing too. New `_accept_for_oob()` helper preserves the panic-button bypass on user allowlist while enforcing group + topic-routing. 7 regression tests in `gateway/tests/test_oob_topic_routing.py`. (`54dd72a`)
+
+### Added
+
+- **`99-self-check` now surfaces "promote bots to admin" in Next steps** with a yellow warning block explaining the Telegram Privacy-Mode-cache quirk: when a bot joins a group with Privacy=on (the BotFather default), Telegram caches the privacy decision per-(bot, group). Even toggling Privacy off in BotFather later doesn't propagate. Admin status is the only reliable cache invalidation. Self-check now also prints the missing `systemctl start agent-vesna agent-user-gateway` line that previously was implicit. (`737dc0c`)
+
+### Notes on root causes
+
+- The Privacy-Mode quirk is **upstream Telegram behaviour**, not a bug in our code. The author's edgelab.su project doesn't surface this because they run DM-only bots (Jarvis + Richard, each in private chat). Our forum-group + topic-routing architecture is richer than theirs and runs into this Telegram limitation by design — the fix has to be operator-side (admin promotion) plus loud documentation, not silent code.
+- The OOB-vs-topic-routing bug is fully on us: a design oversight while adapting the author's panic-button OOB pattern (which works fine in his DM-only world) to our forum-group setting.
+
 ## [Unreleased] — v0.2.0-dev (Author parity catch-up)
 
 Driven by competitive analysis vs five `qwwiwi/edgelab.su` repos. Plan in `/Users/antontsevmenko/.claude/plans/delightful-stirring-mitten.md` (Catch-up Plan v2 section).
