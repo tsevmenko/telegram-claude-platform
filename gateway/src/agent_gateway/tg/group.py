@@ -44,10 +44,19 @@ def is_addressed_to_agent(
     else:
         thread_key = None
 
-    if thread_key and chat_topics and thread_key in chat_topics:
-        return True
-    # Fall through to @mention detection if topic not registered.
+    # STRICT topic routing: if the operator configured topics for this chat,
+    # we ONLY respond in those topics. We do NOT fall back to @mention /
+    # agent_names matching in other topics, because in a multi-agent forum
+    # the literal word "leto" or "vesna" appears in the operators' planning
+    # discussions all the time — agents would barge into each others'
+    # topics every time a name was uttered. Strict routing keeps each
+    # agent in its lane.
+    if chat_topics:
+        return bool(thread_key and thread_key in chat_topics)
 
+    # No topic_routing configured for this chat → legacy path: respond on
+    # @mention or agent_names hit. This preserves the v1 single-bot DM-style
+    # behaviour for operators who haven't (yet) split their group into topics.
     text = (message.text or message.caption or "").lower()
     if not text:
         return False

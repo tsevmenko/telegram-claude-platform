@@ -90,3 +90,65 @@ def test_empty_text_in_group_not_addressed():
     cfg = _cfg(agent_names=["leto"])
     msg = _msg("supergroup", "", chat_id=-100)
     assert is_addressed_to_agent("leto", cfg, msg, None) is False
+
+
+def test_strict_routing_ignores_name_mention_in_foreign_topic():
+    """Live-VPS regression: in a multi-agent forum group, operators casually
+    say "Vesna and Leto" while planning. Without strict routing, Leto would
+    barge into Vesna's Technical topic on every such mention.
+
+    With strict routing: when topic_routing is configured for a chat, we
+    respond ONLY in registered topics. @mentions / agent_names matches in
+    other topics are ignored.
+    """
+    cfg = _cfg(
+        agent_names=["leto"],
+        topic_routing={"-100": ["general"]},  # Leto registered for General only
+    )
+    # Operator in Tech topic (thread_id=168) writes message that mentions Leto.
+    msg = _msg(
+        "supergroup",
+        "у нас есть Vesna, Leto, Tyrion — координируем планы",
+        thread_id=168,
+        chat_id=-100,
+        is_forum=True,
+    )
+    assert is_addressed_to_agent("leto", cfg, msg, "letoaibot") is False, (
+        "Leto must NOT respond in Tech (thread 168) even when message mentions 'leto' — "
+        "strict topic routing should beat name-mention fallback"
+    )
+
+
+def test_strict_routing_accepts_in_registered_topic():
+    cfg = _cfg(topic_routing={"-100": ["general"]})
+    msg = _msg(
+        "supergroup", "hello", thread_id=None, chat_id=-100, is_forum=True
+    )
+    assert is_addressed_to_agent("leto", cfg, msg, None) is True
+
+
+def test_legacy_mention_still_works_when_no_topic_routing():
+    """Backward compat: operators who haven't configured topic_routing yet
+    rely on @mention detection. Don't break that."""
+    cfg = _cfg(agent_names=["leto"], topic_routing={})
+    msg = _msg(
+        "supergroup", "hey leto, what's up?", chat_id=-100, is_forum=True
+    )
+    assert is_addressed_to_agent("leto", cfg, msg, None) is True
+
+
+def test_strict_routing_rejects_foreign_username_mention():
+    """Even @vesna_admin_bot pinged in a topic Leto isn't routed to should
+    NOT wake Leto — strict routing means foreign topic = silent."""
+    cfg = _cfg(
+        agent_names=["leto"],
+        topic_routing={"-100": ["general"]},
+    )
+    msg = _msg(
+        "supergroup",
+        "@vesna_admin_bot please run a status check",
+        thread_id=168,
+        chat_id=-100,
+        is_forum=True,
+    )
+    assert is_addressed_to_agent("leto", cfg, msg, "letoaibot") is False
