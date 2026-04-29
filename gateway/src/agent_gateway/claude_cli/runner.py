@@ -197,6 +197,14 @@ class ClaudeRunner:
             "stream-json",
             "--verbose",
         ]
+        # --add-dir <workspace> tells Claude Code's built-in sandbox that the
+        # entire agent workspace is writable. Without this, recent (2024+)
+        # versions of the CLI mark workspace subdirs (skills/, scripts/,
+        # core/, etc.) as sensitive even when the dir is the process cwd —
+        # client agents can't extend their own toolchain (write a new skill,
+        # add a helper script). Our CLAUDE.md declares skills/ as GREEN; this
+        # flag aligns the CLI sandbox with that declaration.
+        cmd += ["--add-dir", str(agent_cfg.workspace)]
         if new_session:
             cmd += ["--session-id", sid]
         else:
