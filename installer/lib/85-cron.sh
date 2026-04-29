@@ -6,8 +6,10 @@
 
 step_main() {
     install -d -m 0755 -o root -g root /etc/cron.d
-    install_cron_for_agent root  /root/.claude-lab/vesna/.claude  vesna
-    install_cron_for_agent agent /home/agent/.claude-lab/leto/.claude leto
+    # v0.4.0: workspace path no longer includes the trailing /.claude suffix
+    # — see 60-user-gateway.sh comment for the rationale.
+    install_cron_for_agent root  /root/.claude-lab/vesna  vesna
+    install_cron_for_agent agent /home/agent/.claude-lab/leto leto
     systemctl restart cron 2>/dev/null || true
     ok "Memory-rotation cron installed for vesna and leto."
 }

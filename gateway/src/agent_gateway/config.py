@@ -30,7 +30,14 @@ class AgentConfig(BaseModel):
     bot_token_file: str | None = None
     bot_username: str = ""
     workspace: str
-    """Absolute path to the agent's `.claude/` directory."""
+    """Absolute path to the agent's workspace root directory.
+
+    v0.4.0+ layout: ``~/.claude-lab/<agent>/`` (no ``.claude/`` subdirectory).
+    Used as cwd for the ``claude`` CLI subprocess; CLAUDE.md, core/, skills/,
+    scripts/, hooks/, logs/ all live directly under this path. The earlier
+    layout placed them at ``~/.claude-lab/<agent>/.claude/`` but claude CLI
+    2.x's path-sensitivity classifier blocks Bash/Edit/Write to anything
+    containing ``.claude/`` as a path component."""
 
     model: Literal["opus", "sonnet"] = "opus"
     """Default model for this agent. Overridden per-call by `claude --model`."""

@@ -6,7 +6,7 @@ set +e
 
 INPUT="$(cat 2>/dev/null || true)"
 
-WS="${AGENT_WORKSPACE:-${HOME}/.claude-lab/$(basename "$(dirname "$(dirname "$(realpath "$0")")")")/.claude}"
+WS="${AGENT_WORKSPACE:-${PWD}}"
 LOG="${WS}/logs/compact.log"
 mkdir -p "$(dirname "$LOG")" 2>/dev/null
 

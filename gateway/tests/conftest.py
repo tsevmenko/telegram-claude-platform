@@ -11,8 +11,13 @@ from agent_gateway.config import AgentConfig
 
 @pytest.fixture
 def tmp_workspace(tmp_path: Path) -> Path:
-    """Build a minimal `.claude/` tree in a temp dir, return its path."""
-    ws = tmp_path / ".claude"
+    """Build a minimal agent workspace tree in a temp dir, return its path.
+
+    v0.4.0+ layout: workspace lives directly at the path returned (no
+    ``.claude/`` subdirectory). The fixture creates a child dir ``ws/`` so
+    multiple parallel fixtures using the same tmp_path don't collide.
+    """
+    ws = tmp_path / "ws"
     (ws / "core" / "warm").mkdir(parents=True)
     (ws / "core" / "hot").mkdir(parents=True)
     (ws / "core" / "archive").mkdir(parents=True)

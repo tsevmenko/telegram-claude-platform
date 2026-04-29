@@ -200,16 +200,16 @@ Verify everything the installer should have done. Format as a table:
 5.  agent-vesna service active             | systemctl is-active agent-vesna             | active
 6.  agent-user-gateway service active      | systemctl is-active agent-user-gateway      | active
 7.  openviking service active              | systemctl is-active openviking              | active
-8.  Vesna workspace                        | ls /root/.claude-lab/vesna/.claude/         | CLAUDE.md, core/, skills/
-9.  Leto workspace                         | ls /home/agent/.claude-lab/leto/.claude/    | CLAUDE.md, core/, skills/
+8.  Vesna workspace                        | ls /root/.claude-lab/vesna/         | CLAUDE.md, core/, skills/
+9.  Leto workspace                         | ls /home/agent/.claude-lab/leto/    | CLAUDE.md, core/, skills/
 10. Sudoers narrow file                    | ls -la /etc/sudoers.d/agent-narrow          | exists, 0440 root:root
 11. Cron entries (vesna)                   | cat /etc/cron.d/agent-memory-vesna          | 5 lines + tcp marker
 12. Cron entries (agent)                   | cat /etc/cron.d/agent-memory-leto           | 5 lines + tcp marker
 13. Webhook token generated                | test -s /root/vesna/webhook-token.txt       | file exists, 64 hex chars
 14. OpenViking reachable                   | curl -s localhost:1933/api/v1/health        | "ok"
-15. Skills installed                       | ls /home/agent/.claude-lab/leto/.claude/skills/ | 12 skills
+15. Skills installed                       | ls /home/agent/.claude-lab/leto/skills/ | 12 skills
 16. Superpowers plugin                     | ls /home/agent/.claude/plugins/superpowers/.git | exists
-17. CLAUDE.md exactly 4 @include           | grep -c '^@core' /home/agent/.claude-lab/leto/.claude/CLAUDE.md | 4
+17. CLAUDE.md exactly 4 @include           | grep -c '^@core' /home/agent/.claude-lab/leto/CLAUDE.md | 4
 18. /etc/openviking/key permissions        | stat -c '%a %U:%G' /etc/openviking/key      | 640 root:openviking
 
 If any FAIL: report what's broken and how to fix it. Verdict: READY / DEGRADED / DOWN.
@@ -259,7 +259,7 @@ The HOT memory file is over 100KB — `trim-hot.sh` doesn't seem to have run.
 Check:
 - systemctl is-active cron
 - /etc/cron.d/agent-memory-leto exists
-- tail -100 of the consolidated cron log: /home/agent/.claude-lab/leto/.claude/logs/memory-cron.log
+- tail -100 of the consolidated cron log: /home/agent/.claude-lab/leto/logs/memory-cron.log
 
 Run trim-hot.sh manually as the agent user and report the result.
 ```
@@ -302,7 +302,7 @@ Verdict: READY / DEGRADED / DOWN. If DEGRADED, list the exact fixes (commands).
 If something in the workspace looks wrong, compare to the canonical templates in this repo:
 
 ```
-The agent's CLAUDE.md feels off. Compare /home/agent/.claude-lab/leto/.claude/CLAUDE.md
+The agent's CLAUDE.md feels off. Compare /home/agent/.claude-lab/leto/CLAUDE.md
 with the canonical template at workspace-template/CLAUDE.md.tmpl in our repo on GitHub
 (github.com/tsevmenko/telegram-claude-platform). Show me the diff and which sections drifted.
 ```

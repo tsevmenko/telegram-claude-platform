@@ -128,7 +128,10 @@ tg_get_me() {
 }
 
 # plant_workspace OWNER WORKSPACE_DIR AGENT_NAME AGENT_ROLE OPERATOR_NAME LANGUAGE TIMEZONE
-# Renders templates from workspace-template/ into WORKSPACE_DIR (= ${parent}/.claude).
+# Renders templates from workspace-template/ into WORKSPACE_DIR.
+# v0.4.0+: WORKSPACE_DIR is `${parent}/${agent}` (no `.claude` suffix). The
+# previous layout `${parent}/${agent}/.claude` triggered claude CLI 2.x's
+# path-sensitivity classifier — see 60-user-gateway.sh for full context.
 # Copies skills/, scripts/, hooks/ as-is and fixes ownership.
 plant_workspace() {
     local owner="$1" ws="$2" agent="$3" role="$4" op_name="$5" lang="$6" tz="$7"

@@ -73,6 +73,6 @@ sudo -u agent /home/agent/gateway/.venv/bin/python -c \
     "from agent_gateway.config import GatewayConfig; print(GatewayConfig.load('/home/agent/gateway/config.json'))"
 
 # Manually fire a memory rotation
-sudo -u agent /home/agent/.claude-lab/leto/.claude/scripts/trim-hot.sh
+sudo -u agent /home/agent/.claude-lab/leto/scripts/trim-hot.sh
 cat /tmp/trim-hot.log
 ```

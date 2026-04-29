@@ -4,7 +4,7 @@
 # the next session start (via @core/hot/handoff.md in CLAUDE.md).
 set +e
 
-WS="${AGENT_WORKSPACE:-${HOME}/.claude-lab/$(basename "$(dirname "$(dirname "$(realpath "$0")")")")/.claude}"
+WS="${AGENT_WORKSPACE:-${PWD}}"
 HOT="${WS}/core/hot/recent.md"
 HANDOFF="${WS}/core/hot/handoff.md"
 

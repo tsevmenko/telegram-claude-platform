@@ -4,7 +4,7 @@
 # 10KB or 50 lines. Runs claude from /tmp to avoid loading workspace CLAUDE.md.
 set -euo pipefail
 
-WS="${AGENT_WORKSPACE:-${HOME}/.claude-lab/$(basename "$(dirname "$(dirname "$(realpath "$0")")")")/.claude}"
+WS="${AGENT_WORKSPACE:-${PWD}}"
 WARM="${WS}/core/warm/decisions.md"
 LOCKFILE="/tmp/compress-warm.lock"
 LOG_DIR="${WS}/logs"

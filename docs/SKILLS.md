@@ -1,6 +1,6 @@
 # Skills
 
-A skill is a folder under `<workspace>/.claude/skills/<name>/` with a `SKILL.md` (YAML frontmatter + instructions) and an optional `scripts/` directory. Claude reads the frontmatter, decides when to invoke the skill, and follows the body's instructions. Helper scripts run via the Bash tool — they're not magic, just normal shell / Python.
+A skill is a folder under `<workspace>/skills/<name>/` with a `SKILL.md` (YAML frontmatter + instructions) and an optional `scripts/` directory. Claude reads the frontmatter, decides when to invoke the skill, and follows the body's instructions. Helper scripts run via the Bash tool — they're not magic, just normal shell / Python.
 
 ## Bundled (10 skills)
 
@@ -41,6 +41,6 @@ Body — instructions to the agent on when and how to use this skill.
 3. Re-run the installer; the new skill is planted into every workspace.
 4. Existing workspaces: copy the new skill folder manually:
    ```bash
-   sudo rsync -a workspace-template/skills/<name>/ /home/agent/.claude-lab/leto/.claude/skills/<name>/
-   sudo chown -R agent:agent /home/agent/.claude-lab/leto/.claude/skills/<name>
+   sudo rsync -a workspace-template/skills/<name>/ /home/agent/.claude-lab/leto/skills/<name>/
+   sudo chown -R agent:agent /home/agent/.claude-lab/leto/skills/<name>
    ```

@@ -33,7 +33,7 @@ def _run_hook(name: str, env: dict[str, str], stdin: str = "") -> subprocess.Com
 
 @pytest.fixture
 def workspace(tmp_path: Path) -> Path:
-    ws = tmp_path / ".claude"
+    ws = tmp_path / "ws"
     (ws / "core" / "warm").mkdir(parents=True)
     (ws / "core" / "hot").mkdir(parents=True)
     (ws / "scripts").mkdir(parents=True)

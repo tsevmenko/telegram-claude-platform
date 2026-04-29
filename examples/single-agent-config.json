@@ -24,7 +24,7 @@
       "enabled": true,
       "bot_token_file": "/home/agent/secrets/leto-bot-token",
       "bot_username": "your_leto_bot",
-      "workspace": "/home/agent/.claude-lab/leto/.claude",
+      "workspace": "/home/agent/.claude-lab/leto",
       "model": "opus",
       "timeout_sec": 300,
       "streaming_mode_private": "progress",

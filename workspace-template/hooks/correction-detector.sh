@@ -117,7 +117,7 @@ fi
 # (structured) and updates core/LEARNINGS.md (human-readable summary).
 # ---------------------------------------------------------------------------
 
-WS="${AGENT_WORKSPACE:-${HOME}/.claude-lab/$(basename "$(dirname "$(dirname "$(realpath "$0")")")")/.claude}"
+WS="${AGENT_WORKSPACE:-${PWD}}"
 ENGINE="${WS}/scripts/learnings-engine.py"
 
 if [ -x "$ENGINE" ] && command -v python3 >/dev/null 2>&1; then

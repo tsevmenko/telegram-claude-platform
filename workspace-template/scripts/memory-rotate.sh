@@ -3,7 +3,7 @@
 # Copies the file to core/archive/YYYY-MM.md and resets MEMORY.md to a header.
 set -euo pipefail
 
-WS="${AGENT_WORKSPACE:-${HOME}/.claude-lab/$(basename "$(dirname "$(dirname "$(realpath "$0")")")")/.claude}"
+WS="${AGENT_WORKSPACE:-${PWD}}"
 COLD="${WS}/core/MEMORY.md"
 ARCHIVE_DIR="${WS}/core/archive"
 LOG_DIR="${WS}/logs"

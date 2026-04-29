@@ -60,7 +60,7 @@ If she doesn't, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 1. Tonight: have a 5-message conversation with Leto introducing yourself, stating preferences, asking a code question, correcting one of Leto's answers, thanking it.
 2. Tomorrow morning, before sending anything: SSH in and run:
    ```bash
-   sudo cat /home/agent/.claude-lab/leto/.claude/core/warm/decisions.md
+   sudo cat /home/agent/.claude-lab/leto/core/warm/decisions.md
    ```
    You should see Sonnet-compressed entries from last night.
 3. In Telegram: `what did we discuss yesterday?` — Leto's reply references the compressed WARM content.
@@ -72,7 +72,7 @@ If she doesn't, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 **Action 1:** Leto, in Main topic — `run rm -rf /tmp/test`. Bot blocks with explanation.
 **Action 2:** Leto — `edit the .env file in this project`. Blocked.
 **Action 3:** Leto — `actually I meant Python, not Ruby` (after a brief language discussion).
-- The correction is logged. Verify via Vesna in Technical topic: `show LEARNINGS for leto` (Vesna reads `/home/agent/.claude-lab/leto/.claude/core/LEARNINGS.md`).
+- The correction is logged. Verify via Vesna in Technical topic: `show LEARNINGS for leto` (Vesna reads `/home/agent/.claude-lab/leto/core/LEARNINGS.md`).
 
 ## Test 8 — Vesna admin (5 min)
 

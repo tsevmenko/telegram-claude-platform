@@ -3,7 +3,7 @@ Bash/Edit/Write tool calls inside `<workspace>/.claude/skills/` with the
 literal error:
 
     Claude requested permissions to edit
-    /home/agent/.claude-lab/tyrion/.claude/skills/instagram-analytics/scripts
+    /home/agent/.claude-lab/tyrion/skills/instagram-analytics/scripts
     which is a sensitive file.
 
 This blocked Tyrion from creating the instagram-analytics skill and broke
@@ -35,7 +35,7 @@ from types import SimpleNamespace
 from agent_gateway.claude_cli.runner import ClaudeRunner
 
 
-def _cfg(workspace: str = "/home/agent/.claude-lab/tyrion/.claude") -> SimpleNamespace:
+def _cfg(workspace: str = "/home/agent/.claude-lab/tyrion") -> SimpleNamespace:
     return SimpleNamespace(
         workspace=workspace, model="opus",
         bypass_permissions=True, system_reminder=None,
@@ -80,9 +80,9 @@ def test_env_does_not_clobber_compact_window() -> None:
 def test_env_remote_mode_set_for_every_workspace_layout() -> None:
     """Both Vesna (root) and user-agents must get the env var."""
     runner = ClaudeRunner(claude_binary="claude")
-    for ws in ("/root/.claude-lab/vesna/.claude",
-               "/home/agent/.claude-lab/leto/.claude",
-               "/home/agent/.claude-lab/tyrion/.claude"):
+    for ws in ("/root/.claude-lab/vesna",
+               "/home/agent/.claude-lab/leto",
+               "/home/agent/.claude-lab/tyrion"):
         env = runner._build_env(_cfg(workspace=ws))
         assert env["CLAUDE_CODE_REMOTE"] == "1", (
             f"{ws}: env var missing — agent will hit sensitive-file refusal"

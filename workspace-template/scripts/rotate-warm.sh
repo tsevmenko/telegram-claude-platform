@@ -3,7 +3,7 @@
 # Pure bash. No model calls. Safe to run idempotently.
 set -euo pipefail
 
-WS="${AGENT_WORKSPACE:-${HOME}/.claude-lab/$(basename "$(dirname "$(dirname "$(realpath "$0")")")")/.claude}"
+WS="${AGENT_WORKSPACE:-${PWD}}"
 WARM="${WS}/core/warm/decisions.md"
 COLD="${WS}/core/MEMORY.md"
 LOG_DIR="${WS}/logs"

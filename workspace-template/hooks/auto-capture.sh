@@ -6,7 +6,7 @@
 # doesn't run for some reason. Idempotent on the OV side (same date → same URI).
 set +e
 
-WS="${AGENT_WORKSPACE:-${HOME}/.claude-lab/$(basename "$(dirname "$(dirname "$(realpath "$0")")")")/.claude}"
+WS="${AGENT_WORKSPACE:-${PWD}}"
 SYNC="${WS}/scripts/sync-l4.sh"
 
 if [ -x "$SYNC" ]; then

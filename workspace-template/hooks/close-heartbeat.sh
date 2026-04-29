@@ -3,7 +3,7 @@
 # Vesna's `/status` admin command reads this file to report each agent's state.
 set +e
 
-WS="${AGENT_WORKSPACE:-${HOME}/.claude-lab/$(basename "$(dirname "$(dirname "$(realpath "$0")")")")/.claude}"
+WS="${AGENT_WORKSPACE:-${PWD}}"
 HEARTBEAT="${WS}/core/heartbeat.json"
 TS=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 

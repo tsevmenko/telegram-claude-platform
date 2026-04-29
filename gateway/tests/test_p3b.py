@@ -308,7 +308,7 @@ def test_forward_origin_name_falls_back_first_name() -> None:
 
 
 def test_hot_append_writes_source_tag(tmp_path: Path) -> None:
-    workspace = tmp_path / ".claude"
+    workspace = tmp_path / "ws"
     (workspace / "core" / "hot").mkdir(parents=True)
     (workspace / "core" / "hot" / "recent.md").write_text("# HOT\n")
 
@@ -320,7 +320,7 @@ def test_hot_append_writes_source_tag(tmp_path: Path) -> None:
 
 
 def test_hot_append_supports_all_source_kinds(tmp_path: Path) -> None:
-    workspace = tmp_path / ".claude"
+    workspace = tmp_path / "ws"
     (workspace / "core" / "hot").mkdir(parents=True)
     (workspace / "core" / "hot" / "recent.md").write_text("# HOT\n")
 

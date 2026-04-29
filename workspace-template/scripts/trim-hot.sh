@@ -4,7 +4,7 @@
 # IMPORTANT: runs claude from /tmp so the agent's CLAUDE.md is NOT loaded.
 set -euo pipefail
 
-WS="${AGENT_WORKSPACE:-${HOME}/.claude-lab/$(basename "$(dirname "$(dirname "$(realpath "$0")")")")/.claude}"
+WS="${AGENT_WORKSPACE:-${PWD}}"
 HOT="${WS}/core/hot/recent.md"
 WARM="${WS}/core/warm/decisions.md"
 LOCKFILE="/tmp/trim-hot.lock"

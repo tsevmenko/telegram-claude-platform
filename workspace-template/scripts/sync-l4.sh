@@ -3,7 +3,7 @@
 # Idempotent: same date = same URI = OV overwrites previous resource.
 set -euo pipefail
 
-WS="${AGENT_WORKSPACE:-${HOME}/.claude-lab/$(basename "$(dirname "$(dirname "$(realpath "$0")")")")/.claude}"
+WS="${AGENT_WORKSPACE:-${PWD}}"
 AGENT_NAME="${AGENT_NAME:-$(basename "$(dirname "$WS")")}"
 OV_HOST="${OV_HOST:-http://127.0.0.1:1933}"
 OV_ACCOUNT="${OV_ACCOUNT:-default}"

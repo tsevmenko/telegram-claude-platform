@@ -116,7 +116,7 @@ def test_status_counts_turns(tmp_path: Path) -> None:
 
 def test_status_handles_missing_files(tmp_path: Path) -> None:
     """Empty workspace should render without crashing."""
-    workspace = tmp_path / "empty" / ".claude"
+    workspace = tmp_path / "empty" / "ws"
     state = tmp_path / "empty" / "state"
     workspace.mkdir(parents=True)
     state.mkdir(parents=True)

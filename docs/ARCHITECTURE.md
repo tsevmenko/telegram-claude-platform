@@ -52,8 +52,8 @@ The two services are intentionally fully isolated. Each has:
 
 ## Process model
 
-- **`agent-vesna.service`** runs as `root`. One Telegram bot. Workspace at `/root/.claude-lab/vesna/.claude/`. Used for VPS administration and managing client agents.
-- **`agent-user-gateway.service`** runs as `agent`. Multiple Telegram bots (one per client agent). Each has its own workspace at `/home/agent/.claude-lab/<name>/.claude/`. Used for day-to-day work.
+- **`agent-vesna.service`** runs as `root`. One Telegram bot. Workspace at `/root/.claude-lab/vesna/`. Used for VPS administration and managing client agents.
+- **`agent-user-gateway.service`** runs as `agent`. Multiple Telegram bots (one per client agent). Each has its own workspace at `/home/agent/.claude-lab/<name>/`. Used for day-to-day work.
 - **`openviking.service`** runs as `openviking`. Bound to loopback only. Provides L4 semantic memory.
 
 All three are started by the installer; the operator does **not** edit unit files by hand under normal operation.

@@ -2,7 +2,10 @@
 # Deploy Vesna (root admin agent): workspace, venv, config, systemd unit.
 
 readonly VESNA_DIR="/root/vesna"
-readonly VESNA_WORKSPACE="/root/.claude-lab/vesna/.claude"
+# v0.4.0: workspace moved out of `.claude/` (was `/root/.claude-lab/vesna/.claude/`)
+# — see 60-user-gateway.sh comment for full rationale on why claude CLI 2.x
+# treats `.claude/` path components as sensitive even with --add-dir.
+readonly VESNA_WORKSPACE="/root/.claude-lab/vesna"
 readonly VESNA_GLOBAL_CLAUDE="/root/.claude"
 
 step_main() {
@@ -100,10 +103,10 @@ not be told "added, work with them" without the onboarding step. Order:
    bot token (from @BotFather).
 2. Validate the bot token via `getMe`. Fail loud if Telegram rejects.
 3. Stage token: `install -m 0600 -o agent -g agent <(echo "$TOKEN") /home/agent/secrets/<name>-bot-token`.
-4. Create workspace from template: `rsync -a --chown=agent:agent /home/agent/gateway/source/workspace-template/ /home/agent/.claude-lab/<name>/.claude/`.
+4. Create workspace from template (v0.4.0+ layout — no `.claude/` subdirectory): `rsync -a --chown=agent:agent /home/agent/gateway/source/workspace-template/ /home/agent/.claude-lab/<name>/`.
 5. **Plant onboarding marker** so the new agent refuses real work until profile is captured:
    ```bash
-   sudo -u agent touch /home/agent/.claude-lab/<name>/.claude/core/.needs-onboarding
+   sudo -u agent touch /home/agent/.claude-lab/<name>/core/.needs-onboarding
    ```
 6. Patch `/home/agent/gateway/config.json` — append agent block under `.agents.<name>` with bot_token_file, bot_username (from getMe), workspace, model, system_reminder, agent_names=[<name>], topic_routing={}, bypass_permissions=true.
 7. Restart user-gateway: `sudo systemctl restart agent-user-gateway`.

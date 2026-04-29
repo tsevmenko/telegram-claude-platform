@@ -6,7 +6,7 @@
 # start. Non-fatal: if anything is missing we still return 0.
 set +e
 
-WS="${AGENT_WORKSPACE:-${HOME}/.claude-lab/$(basename "$(dirname "$(dirname "$(realpath "$0")")")")/.claude}"
+WS="${AGENT_WORKSPACE:-${PWD}}"
 ENGINE="${WS}/scripts/learnings-engine.py"
 INBOX="${WS}/core/inbox.md"
 HEARTBEAT="${WS}/core/heartbeat.json"

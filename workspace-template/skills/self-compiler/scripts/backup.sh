@@ -2,7 +2,7 @@
 # Back up CLAUDE.md before any self-compiler rewrite.
 set -euo pipefail
 
-WS="${AGENT_WORKSPACE:-${HOME}/.claude-lab/$(basename "$(dirname "$(dirname "$(realpath "$0")")")")/.claude}"
+WS="${AGENT_WORKSPACE:-${PWD}}"
 SRC="${WS}/CLAUDE.md"
 [ -f "$SRC" ] || { echo "no CLAUDE.md to back up at ${SRC}" >&2; exit 1; }
 

@@ -141,7 +141,7 @@ def _make_consumer(workspace: Path):
 
 @pytest.mark.asyncio
 async def test_send_document_inside_workspace(tmp_path: Path) -> None:
-    workspace = tmp_path / ".claude"
+    workspace = tmp_path / "ws"
     workspace.mkdir()
     out_file = workspace / "output.csv"
     out_file.write_text("a,b\n1,2\n")
@@ -158,7 +158,7 @@ async def test_send_document_inside_workspace(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_send_document_path_traversal_blocked(tmp_path: Path) -> None:
     """A write to /etc/passwd must NEVER be sent as a Telegram doc."""
-    workspace = tmp_path / "ws" / ".claude"
+    workspace = tmp_path / "ws"
     workspace.mkdir(parents=True)
 
     consumer = _make_consumer(workspace)
@@ -170,7 +170,7 @@ async def test_send_document_path_traversal_blocked(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_send_document_skips_oversize(tmp_path: Path) -> None:
-    workspace = tmp_path / ".claude"
+    workspace = tmp_path / "ws"
     workspace.mkdir()
     big = workspace / "big.bin"
     # Create a sparse file that reports >50MB without actually allocating.
@@ -187,7 +187,7 @@ async def test_send_document_skips_oversize(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_send_document_dedups_repeated_paths(tmp_path: Path) -> None:
-    workspace = tmp_path / ".claude"
+    workspace = tmp_path / "ws"
     workspace.mkdir()
     out = workspace / "report.md"
     out.write_text("# report\n")
@@ -204,7 +204,7 @@ async def test_send_document_dedups_repeated_paths(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_send_document_skips_empty_file(tmp_path: Path) -> None:
-    workspace = tmp_path / ".claude"
+    workspace = tmp_path / "ws"
     workspace.mkdir()
     empty = workspace / "empty.txt"
     empty.write_text("")

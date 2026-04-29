@@ -2,7 +2,11 @@
 # Deploy user-gateway: workspace for Leto, venv, multi-agent config, systemd unit.
 
 readonly UG_DIR="/home/agent/gateway"
-readonly LETO_WORKSPACE="/home/agent/.claude-lab/leto/.claude"
+# v0.4.0: workspace moved out of `.claude/` (was `~/.claude-lab/leto/.claude/`)
+# because claude CLI 2.x's path-sensitivity classifier blocks Bash/Edit/Write
+# inside any path component named `.claude`. New layout puts CLAUDE.md +
+# core/ + skills/ + scripts/ + hooks/ directly at `~/.claude-lab/<agent>/`.
+readonly LETO_WORKSPACE="/home/agent/.claude-lab/leto"
 readonly AGENT_GLOBAL_CLAUDE="/home/agent/.claude"
 
 step_main() {

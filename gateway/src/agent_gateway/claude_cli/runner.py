@@ -218,37 +218,42 @@ class ClaudeRunner:
 
     def _build_env(self, agent_cfg: AgentConfig) -> dict[str, str]:
         env = dict(os.environ)
-        env.setdefault("HOME", str(Path(agent_cfg.workspace).parent.parent))
+        # HOME = parent of the agent's workspace's parent. Old layout placed
+        # the workspace at `~/.claude-lab/<agent>/.claude/`, so two parents
+        # got us back to ~. New layout (v0.4.0+) puts it at
+        # `~/.claude-lab/<agent>/`, so only one parent. We compute by
+        # counting up to the home parent that contains `.claude-lab`.
+        ws = Path(agent_cfg.workspace)
+        for ancestor in ws.parents:
+            if ancestor.name == ".claude-lab":
+                env.setdefault("HOME", str(ancestor.parent))
+                break
+        else:
+            # Fallback for non-standard layouts (tests, dev): two-parents-up.
+            env.setdefault("HOME", str(ws.parent.parent))
+
+        # AGENT_WORKSPACE is the canonical env var our hook scripts and cron
+        # rotation scripts read to locate the workspace. Setting it explicitly
+        # here means the realpath-based fallback in those scripts (which was
+        # always brittle and got worse after the v0.4.0 layout change) never
+        # has to fire.
+        env["AGENT_WORKSPACE"] = str(ws)
+
         # Pin the auto-compact window per the architecture's "exactly-one env
         # var" doctrine. Use setdefault so the operator can override per-agent
         # via a config-injected env (e.g. a low-context debug agent at 200K).
         env.setdefault("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "400000")
         # CLAUDE_CODE_REMOTE=1 flips the CLI's `isRemoteMode` flag, which
         # activates the path-sensitivity classifier exception for
-        # `<workspace>/.claude/{skills,agents,commands}/`. Without this,
-        # claude CLI 2.x refuses Bash/Edit/Write to those paths as "sensitive
-        # files" *even with* `--dangerously-skip-permissions` and `--add-dir`
-        # — the classifier `u35` runs independently of permission bypass.
-        # Live regression: Tyrion attempted `mkdir .claude/skills/instagram-
-        # analytics/scripts` and got
-        #   "Claude requested permissions to edit ... which is a sensitive
-        #    file."
-        # Decompiled CLI source (function `u35`):
-        #   if (Y === ".claude") {
-        #     let M = K[A+1];
-        #     if ($ && M) {                       // $ === isRemoteMode
-        #       if (M === "skills" || M === "agents" || M === "commands")
-        #         break;                          // not sensitive
-        #     }
-        #   }
-        # `isRemoteMode` is set by `hH(process.env.CLAUDE_CODE_REMOTE)` —
-        # accepts "1"/"true"/"yes"/"on". Side effects of remote-mode are
-        # confined to telemetry tagging and one transport-selection branch
-        # gated on `tG.kind === "ccr"` (which we never set), so this is
-        # safe for our local-subprocess usage.
-        # NOTE: this exemption only covers `.claude/skills|agents|commands`.
-        # Writes to `.claude/core/`, `.claude/hooks/`, etc. are still blocked
-        # — see workspace-refactor task for the full fix.
+        # `<X>/.claude/{skills,agents,commands}/` — see decompiled CLI
+        # function `u35`. As of v0.4.0 the workspace itself no longer
+        # contains `.claude/` (we moved out from
+        # `~/.claude-lab/<agent>/.claude/` to `~/.claude-lab/<agent>/`),
+        # so the classifier no longer triggers on workspace paths. We keep
+        # this env var as defensive depth: it costs nothing (the flag also
+        # affects telemetry tagging only — no behavioural side effects we
+        # depend on) and protects us if a future agent code path happens to
+        # write somewhere that does include `.claude/` as a path component.
         env.setdefault("CLAUDE_CODE_REMOTE", "1")
         return env
 

@@ -7,7 +7,7 @@ You don't edit configs by hand — Vesna does it. Open the **Technical** topic o
 Vesna will:
 
 1. Patch `/home/agent/gateway/config.json` — append the agent block.
-2. Create `/home/agent/.claude-lab/coder/.claude/` from `workspace-template/`.
+2. Create `/home/agent/.claude-lab/coder/` from `workspace-template/`.
 3. Save the bot token under `/home/agent/secrets/coder-bot-token` (`chmod 600`).
 4. `sudo systemctl restart agent-user-gateway`.
 5. Confirm:

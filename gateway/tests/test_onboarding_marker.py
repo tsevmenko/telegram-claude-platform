@@ -43,9 +43,17 @@ VESNA_INSTALLER = REPO_ROOT / "installer" / "lib" / "50-vesna.sh"
         ("/home/agent/.claude/shell-snapshots/snap.txt",                                   True),
         ("/home/agent/.claude/ide/state.json",                                             True),
         # Workspace memory — MUST be allowed (those are the legitimate paths).
+        # v0.4.0: workspace no longer has /.claude/ subdirectory.
+        ("/home/agent/.claude-lab/leto/core/MEMORY.md",                                    False),
+        ("/home/agent/.claude-lab/tyrion/core/LEARNINGS.md",                               False),
+        ("/root/.claude-lab/vesna/core/warm/decisions.md",                                 False),
+        # Sanity: even though the new layout drops /.claude/, agents migrating
+        # from old VPS state may still have files at the old path until B-phase
+        # mv is done. Those legacy paths must STILL be allowed (they're not
+        # claude CLI metadata, just our old layout). protect-files only
+        # blocks `.claude/projects|statsig|todos|shell-snapshots|ide` —
+        # `.claude-lab/.../.claude/core` and friends are fine.
         ("/home/agent/.claude-lab/leto/.claude/core/MEMORY.md",                            False),
-        ("/home/agent/.claude-lab/tyrion/.claude/core/LEARNINGS.md",                       False),
-        ("/root/.claude-lab/vesna/.claude/core/warm/decisions.md",                         False),
         # Existing protected paths — sanity check we didn't break them.
         ("/home/agent/secrets/leto-bot-token",                                             True),
         ("/etc/passwd",                                                                    True),
@@ -76,8 +84,13 @@ def test_protect_files_classification(path: str, expected_blocked: bool) -> None
 
 
 def _build_fake_workspace(tmp_path: Path) -> Path:
-    """Tree shaped like what session-bootstrap.sh expects."""
-    wsp = tmp_path / "ws" / ".claude"
+    """Tree shaped like what session-bootstrap.sh expects.
+
+    v0.4.0+: workspace lives directly at ``tmp_path/ws`` (no ``.claude/``
+    subdir, since claude CLI 2.x's path-sensitivity classifier blocks
+    writes to anything under a ``.claude/`` path component).
+    """
+    wsp = tmp_path / "ws"
     (wsp / "core").mkdir(parents=True)
     (wsp / "scripts").mkdir(parents=True)
     return wsp
