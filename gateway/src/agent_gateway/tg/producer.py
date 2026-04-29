@@ -382,9 +382,18 @@ def _forward_origin_name(origin: object) -> str:
 
 
 async def _enqueue_oob(message: Message, consumer: AgentConsumer, raw_text: str) -> None:
-    cmd = raw_text.split()[0].lower() if raw_text else ""
-    if cmd not in OOB_COMMANDS:
+    if not raw_text:
         return
+    # Telegram clients automatically suffix `@<bot_username>` to slash-commands
+    # in groups when the bot is one of several — i.e. `/reset@tirionaibot`
+    # instead of bare `/reset`. Strip the suffix before matching against the
+    # canonical OOB list. Author's original gateway.py:3036 does the same.
+    head = raw_text.split()[0].lower()
+    if "@" in head:
+        head = head.split("@", 1)[0]
+    if head not in OOB_COMMANDS:
+        return
+    cmd = head
     # OOB messages skip the user allowlist check on purpose: if the queue is
     # backed up with a long task, the operator must always be able to /stop it.
     msg = _make_msg(message, raw_text, oob=True, cmd=cmd)

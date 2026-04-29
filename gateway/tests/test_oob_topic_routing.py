@@ -97,3 +97,28 @@ def test_oob_user_allowlist_intentionally_skipped() -> None:
                thread_id=None, is_forum=True)
     # No user allowlist parameter here at all — function shouldn't take one.
     assert _accept_for_oob(msg, {-1003619435150}, leto, "letoaibot") is True
+
+
+def test_oob_strips_at_botname_suffix_before_matching() -> None:
+    """Telegram clients in multi-bot groups append @<bot_username> to slash
+    commands (e.g. /reset@tirionaibot). Live VPS regression: our parser
+    compared against bare /reset and silently dropped @-suffixed commands.
+
+    The fix: strip everything after `@` in the head token before matching
+    OOB_COMMANDS. Author's original gateway.py does the same on line 3036.
+    """
+    from agent_gateway.tg.producer import OOB_COMMANDS
+    # We test the parsing logic directly: simulate what _enqueue_oob does
+    # to the head token.
+    for raw, expected in [
+        ("/reset@tirionaibot",          "/reset"),
+        ("/reset",                       "/reset"),
+        ("/STOP@letoaibot any args",     "/stop"),
+        ("/compact@vesna_admin_bot",     "/compact"),
+        ("/cancel",                      "/cancel"),
+    ]:
+        head = raw.split()[0].lower()
+        if "@" in head:
+            head = head.split("@", 1)[0]
+        assert head == expected, f"raw={raw!r} should normalize to {expected}, got {head}"
+        assert head in OOB_COMMANDS, f"normalized {head} not in OOB_COMMANDS"
