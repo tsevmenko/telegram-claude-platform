@@ -84,12 +84,39 @@ You manage the user-gateway's client agents and infrastructure.
 ## Available actions
 
 - `list_agents` — read `/home/agent/gateway/config.json` and report agent names + statuses.
-- `add_agent <name>` — guided dialogue: model? system reminder? bot token? Then patch `config.json`, create the workspace, restart user-gateway.
+- `add_agent <name>` — guided dialogue: model? system reminder? bot token? Then patch `config.json`, create the workspace, **plant `core/.needs-onboarding` marker**, restart user-gateway, **tell operator to run `/onboarding` in the new agent's topic before any other work**.
 - `remove_agent <name>` — confirm with operator → remove agent block from config + workspace → restart.
 - `restart_user_gateway` — `sudo systemctl restart agent-user-gateway`.
 - `regenerate_webhook_token` — generate new token, update both configs, send the new token to the operator (Technical topic only), restart user-gateway.
 - `route_topic <topic_id> <agent>` — add a topic_id → agent_name mapping to the agent's `topic_routing` field, restart.
 - `show_webhook_token` — read `/root/vesna/webhook-token.txt` and send to operator. NEVER paste it elsewhere.
+
+## add_agent — required steps (in order)
+
+A new agent is **not finished** until onboarding is queued. The operator must
+not be told "added, work with them" without the onboarding step. Order:
+
+1. Ask operator for: name, model (opus/sonnet), system_reminder (one sentence),
+   bot token (from @BotFather).
+2. Validate the bot token via `getMe`. Fail loud if Telegram rejects.
+3. Stage token: `install -m 0600 -o agent -g agent <(echo "$TOKEN") /home/agent/secrets/<name>-bot-token`.
+4. Create workspace from template: `rsync -a --chown=agent:agent /home/agent/gateway/source/workspace-template/ /home/agent/.claude-lab/<name>/.claude/`.
+5. **Plant onboarding marker** so the new agent refuses real work until profile is captured:
+   ```bash
+   sudo -u agent touch /home/agent/.claude-lab/<name>/.claude/core/.needs-onboarding
+   ```
+6. Patch `/home/agent/gateway/config.json` — append agent block under `.agents.<name>` with bot_token_file, bot_username (from getMe), workspace, model, system_reminder, agent_names=[<name>], topic_routing={}, bypass_permissions=true.
+7. Restart user-gateway: `sudo systemctl restart agent-user-gateway`.
+8. **Tell the operator (final message), exact wording**:
+
+   > ✓ <name> создан. Создай в forum-группе topic для него (если ещё нет),
+   > пришли мне его topic_id командой "route topic <ID> <name>". После этого
+   > **зайди в этот топик и напиши `/onboarding`** — без onboarding'а агент
+   > не возьмётся за реальные задачи (он будет просить заполнить USER.md).
+
+This sequence is non-negotiable — if operator skips step 8 and immediately
+asks the new agent to do work, the agent will (correctly) refuse and ask
+for onboarding. That refusal is the marker file working as intended.
 
 ## How to execute
 
@@ -119,6 +146,7 @@ sudo systemctl restart agent-user-gateway
 - Always confirm with the operator before destructive admin actions (remove_agent, regenerate_token, restart).
 - Never expose secrets in cross-topic messages — webhook tokens, bot tokens, OpenViking keys live in the Technical topic only.
 - Log every admin action to `/var/log/vesna-admin.log` with timestamp and operator request.
+- **Never declare add_agent complete without the .needs-onboarding marker planted.** Steps 5 and 8 above are mandatory, not optional.
 SKILL
     chmod 0644 "${VESNA_WORKSPACE}/skills/admin-tools/SKILL.md"
     chown -R root:root "${VESNA_WORKSPACE}/skills/admin-tools"

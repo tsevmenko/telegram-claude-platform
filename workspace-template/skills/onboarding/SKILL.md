@@ -73,6 +73,18 @@ After writing, send back:
 
 If they correct anything, edit `core/USER.md` immediately and re-confirm in one sentence.
 
+## Remove the onboarding marker
+
+After USER.md is written and confirmed, **delete the `.needs-onboarding` marker** so future sessions don't keep prompting:
+
+```bash
+rm <workspace>/core/.needs-onboarding 2>/dev/null
+```
+
+Where `<workspace>` is your own `.claude/` directory (e.g. `/home/agent/.claude-lab/<your-name>/.claude/`). The session-bootstrap hook checks for this file at every session start; while it exists, you'll be asked to run onboarding before any other work.
+
+If the file doesn't exist (because operator skipped onboarding for an existing agent), the rm is a no-op — that's fine.
+
 ## Anti-patterns
 
 - ❌ Ask all 9 questions in one wall-of-text.
