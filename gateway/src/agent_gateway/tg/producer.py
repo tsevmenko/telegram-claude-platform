@@ -523,7 +523,23 @@ async def _echo_voice_transcript(bot: Bot, message: Message, text: str) -> None:
 
 
 def attach_to_dispatcher(dp: Dispatcher, bot: Bot, router: Router) -> None:
-    """Bind a per-agent Bot instance + Router to the shared Dispatcher."""
+    """Bind a per-agent Bot instance + Router to the shared Dispatcher.
+
+    Multi-bot gotcha: with ``Dispatcher.start_polling(*bots)``, all routers
+    live in one Dispatcher and aiogram tries them in include order. The first
+    router whose handler matches wins — even if the matched handler returns
+    ``None`` (rejecting the update). Without a per-bot filter, agent A's
+    router silently swallows updates that were polled by agent B's bot,
+    because both have ``@router.message(F.text)``.
+
+    Fix: scope each router to its own bot via ``F.bot.id``. When agent B's
+    update arrives, agent A's router doesn't match → aiogram continues
+    walking the chain → reaches agent B's router → matches → handles.
+    """
+    router.message.filter(F.bot.id == bot.id)
+    router.callback_query.filter(F.bot.id == bot.id)
+    router.edited_message.filter(F.bot.id == bot.id)
+
     dp.include_router(router)
     # aiogram v3 supports multi-bot polling via Dispatcher.start_polling(*bots).
     # We track the bots list outside; the actual call lives in __main__.py.
