@@ -198,7 +198,17 @@ def test_build_text_with_context_uses_self_bot_id_when_provided() -> None:
     assert source == "replied"
 
 
-def test_build_text_with_context_skips_when_replying_to_self_bot() -> None:
+def test_build_text_with_context_now_injects_when_replying_to_self_bot() -> None:
+    """v0.3.10 reversal of the v0.2.1 'skip self-reply' rule.
+
+    The original v0.2.1 audit treated replies-to-our-own-bot as redundant
+    on the basis that the body was already in session history. Tyrion
+    surfaced the regression on 2026-04-30: post-compact and over-window
+    replies became invisible, and the operator's *focus signal* (clicking
+    Reply on a specific past message) was being discarded. We now always
+    inject; the label changes to 'your prior message' so the model knows
+    the body is its own past output.
+    """
     from agent_gateway.tg.producer import _build_text_with_context
 
     reply = SimpleNamespace(
@@ -211,20 +221,24 @@ def test_build_text_with_context_skips_when_replying_to_self_bot() -> None:
         caption=None,
         forward_origin=None,
         reply_to_message=reply,
+        quote=None,
     )
     enriched, source = _build_text_with_context(msg, self_bot_id=999)
-    assert "untrusted metadata" not in enriched
-    assert source == "tg-text"
+    assert "untrusted metadata" in enriched
+    assert "Replied to your prior message" in enriched
+    assert "our own previous answer" in enriched
+    assert source == "replied"
 
 
-def test_build_text_falls_back_when_self_id_unknown() -> None:
-    """If we haven't cached getMe yet (very first message), conservatively
-    treat all bot replies as self (legacy behaviour)."""
+def test_build_text_with_self_id_unknown_still_injects_self_label() -> None:
+    """When getMe id isn't cached (very early startup), we used to skip
+    bot-reply injection entirely. v0.3.10: still inject — the label just
+    falls back to 'your prior message' for any bot author."""
     from agent_gateway.tg.producer import _build_text_with_context
 
     reply = SimpleNamespace(
         from_user=SimpleNamespace(id=111, is_bot=True),
-        text="other bot",
+        text="other bot output",
         caption=None,
     )
     msg = SimpleNamespace(
@@ -232,10 +246,12 @@ def test_build_text_falls_back_when_self_id_unknown() -> None:
         caption=None,
         forward_origin=None,
         reply_to_message=reply,
+        quote=None,
     )
-    enriched, _ = _build_text_with_context(msg, self_bot_id=None)
-    # Legacy fallback: all bots considered self.
-    assert "untrusted metadata" not in enriched
+    enriched, source = _build_text_with_context(msg, self_bot_id=None)
+    assert "untrusted metadata" in enriched
+    assert "other bot output" in enriched
+    assert source == "replied"
 
 
 # ---------------------------------------------------------------------------
