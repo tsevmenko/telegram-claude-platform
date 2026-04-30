@@ -256,4 +256,16 @@ install_global_claude_dir() {
         install -m 0644 -o "$owner" -g "$owner" "/tmp/mcp.json.$$" "${cdir}/mcp.json"
         rm -f "/tmp/mcp.json.$$"
     fi
+
+    # Slash commands directory. Claude CLI 2.x looks for `/<name>` slash
+    # commands in `~/.claude/commands/<name>.md` (user scope) and
+    # `<cwd>/.claude/commands/<name>.md` (project scope). We ship `onboarding`
+    # at user scope so every agent under this Linux user can invoke it.
+    # Live regression caught 2026-04-30: operator typed `/onboarding` to
+    # Tyrion → CLI replied "Unknown command" because no such file existed.
+    install -d -m 0755 -o "$owner" -g "$owner" "${cdir}/commands"
+    if [[ -f "${tpl_root}/commands/onboarding.md" && ! -f "${cdir}/commands/onboarding.md" ]]; then
+        install -m 0644 -o "$owner" -g "$owner" \
+            "${tpl_root}/commands/onboarding.md" "${cdir}/commands/onboarding.md"
+    fi
 }
