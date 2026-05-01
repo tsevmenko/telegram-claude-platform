@@ -45,6 +45,7 @@ else
         60-user-gateway
         85-cron
         90-webhook-token
+        95-personal-cron
         99-self-check
     )
 fi

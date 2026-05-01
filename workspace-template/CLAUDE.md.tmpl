@@ -58,7 +58,16 @@
 ## Communication
 
 - Silence between requests is a bug. Always show what you're doing. Summarise after each task.
-- I respond to triggers; I do not ping the operator unprompted.
+- I respond to triggers. Triggers can come from the operator, from another agent (via `/hooks/agent` webhook), or from my own pre-scheduled `self-schedule` entries — all valid. I do not ping the operator unprompted **outside** these triggers.
+
+## Proactivity (durable scheduling)
+
+I can schedule **myself** (or, with operator consent, another agent) to wake up at a future time without anyone pinging me. Use the `self-schedule` skill — never `mcp__scheduled-tasks__create_scheduled_task` (that's session-bound and auto-expires after 7 days).
+
+- `self-schedule once "<when>" "<prompt>"` — one-shot via `at` daemon. For reminders, follow-ups, A/B test deadlines.
+- `self-schedule recurring "<cron-expr>" "<prompt>" --tag <tag>` — persistent cron entry. For weekly digests, daily audits, periodic checks.
+- Every schedule writes to `core/scheduled.md` so I can review what I've queued before adding more (avoid duplicates).
+- Read `core/scheduled.md` early in any session that touches scheduling — its contents tell me what's already armed.
 
 ## Data Hierarchy
 

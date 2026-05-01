@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# fire-webhook AGENT BASE64_PROMPT
+#
+# Send a webhook injection to the user-gateway. Called by:
+# - cron entries in /etc/cron.d/agent-personal-<name> (recurring proactivity)
+# - `at` jobs scheduled by skills (one-shot reminders)
+# - any script that needs to push a message to an agent
+#
+# Why a separate binary instead of inline curl in cron entries:
+# - Single source of truth for payload assembly (token file location, jq
+#   payload shape, error handling).
+# - cron entries become trivial, single-line, audit-readable: the whole
+#   logic lives in this file owned by root.
+# - PROMPT is base64-encoded so cron entries never need to escape quotes,
+#   newlines, or unicode — safe under any payload content.
+#
+# Args:
+#   $1  AGENT — must be a key under .agents in the gateway config.
+#   $2  PROMPT — base64-encoded prompt text. We decode and pass as-is to
+#               the gateway's webhook so the agent sees it as a normal
+#               operator message.
+#
+# Behaviour:
+#   - Reads webhook token from /home/agent/secrets/webhook-token.txt
+#     (chmod 600 owner agent — script must run as `agent` or root).
+#   - Reads gateway config to find chat_id (allowed_group_ids[0]) and the
+#     agent's thread_id (from .agents.<name>.topic_routing).
+#   - POSTs JSON {agent, chat_id, text, thread_id, source} to the webhook.
+#   - On success prints the gateway's response to stdout; on failure
+#     prints to stderr and exits non-zero.
+#
+# Exit codes:
+#   0 — webhook accepted (HTTP 2xx)
+#   1 — bad arguments
+#   2 — config / token / agent not found
+#   3 — webhook returned non-2xx
+
+set -euo pipefail
+
+AGENT="${1:-}"
+B64="${2:-}"
+
+if [[ -z "$AGENT" || -z "$B64" ]]; then
+    echo "usage: fire-webhook <agent> <base64-prompt>" >&2
+    exit 1
+fi
+
+GATEWAY_CONFIG="${GATEWAY_CONFIG:-/home/agent/gateway/config.json}"
+TOKEN_FILE="${WEBHOOK_TOKEN_FILE:-/home/agent/secrets/webhook-token.txt}"
+WEBHOOK_URL="${WEBHOOK_URL:-http://127.0.0.1:8080/hooks/agent}"
+
+if [[ ! -f "$GATEWAY_CONFIG" ]]; then
+    echo "fire-webhook: gateway config not found at $GATEWAY_CONFIG" >&2
+    exit 2
+fi
+if [[ ! -r "$TOKEN_FILE" ]]; then
+    echo "fire-webhook: webhook token not readable at $TOKEN_FILE (run as agent or root)" >&2
+    exit 2
+fi
+
+# Validate agent exists in config.
+if ! jq -e ".agents.\"${AGENT}\"" "$GATEWAY_CONFIG" >/dev/null 2>&1; then
+    echo "fire-webhook: agent '${AGENT}' not found in $GATEWAY_CONFIG" >&2
+    exit 2
+fi
+
+# Pick the first allowed_group_id as chat_id. In our setup there is exactly
+# one forum group, so this is unambiguous; if you ever expand to multiple
+# groups, extend this script to take an explicit chat_id arg.
+CHAT_ID=$(jq -r '.allowed_group_ids[0] // empty' "$GATEWAY_CONFIG")
+if [[ -z "$CHAT_ID" || "$CHAT_ID" == "null" ]]; then
+    echo "fire-webhook: no allowed_group_ids in config" >&2
+    exit 2
+fi
+
+# Resolve agent's thread_id from topic_routing. The shape is:
+#   topic_routing: {"<chat_id>": ["<thread_id_or_keyword>", ...]}
+# A value of "general" means the chat root (no thread); a numeric string is
+# a forum-topic id. Take the first entry.
+THREAD_RAW=$(jq -r ".agents.\"${AGENT}\".topic_routing.\"${CHAT_ID}\"[0] // empty" "$GATEWAY_CONFIG")
+if [[ -z "$THREAD_RAW" ]]; then
+    echo "fire-webhook: agent '${AGENT}' has no topic_routing for chat ${CHAT_ID}" >&2
+    exit 2
+fi
+
+# Decode the base64 prompt. Use base64 -d (GNU) which tolerates whitespace.
+PROMPT=$(printf '%s' "$B64" | base64 -d)
+if [[ -z "$PROMPT" ]]; then
+    echo "fire-webhook: empty prompt after base64 decode" >&2
+    exit 1
+fi
+
+TOKEN=$(cat "$TOKEN_FILE")
+
+# Build payload. thread_id is optional in our webhook handler — only set
+# when this is a numeric topic id, otherwise leave it null and the gateway
+# routes to the chat root.
+if [[ "$THREAD_RAW" == "general" ]]; then
+    PAYLOAD=$(jq -nc --arg a "$AGENT" --argjson c "$CHAT_ID" --arg p "$PROMPT" \
+        '{agent:$a, chat_id:$c, text:$p, source:"proactive"}')
+else
+    PAYLOAD=$(jq -nc --arg a "$AGENT" --argjson c "$CHAT_ID" --argjson t "$THREAD_RAW" --arg p "$PROMPT" \
+        '{agent:$a, chat_id:$c, text:$p, thread_id:$t, source:"proactive"}')
+fi
+
+# POST and capture both response body and HTTP status.
+HTTP_STATUS=$(curl -sS -o /tmp/fire-webhook-resp.$$ -w '%{http_code}' \
+    -X POST "$WEBHOOK_URL" \
+    -H "Authorization: Bearer ${TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d "$PAYLOAD" || echo "000")
+
+if [[ "$HTTP_STATUS" =~ ^2 ]]; then
+    cat /tmp/fire-webhook-resp.$$ 2>/dev/null
+    rm -f /tmp/fire-webhook-resp.$$
+    exit 0
+fi
+
+echo "fire-webhook: HTTP $HTTP_STATUS from $WEBHOOK_URL" >&2
+cat /tmp/fire-webhook-resp.$$ >&2 2>/dev/null
+rm -f /tmp/fire-webhook-resp.$$
+exit 3

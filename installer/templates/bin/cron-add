@@ -1,0 +1,218 @@
+#!/usr/bin/env bash
+# cron-add — manage /etc/cron.d/agent-personal-<agent> entries.
+#
+# Why this exists: agents have narrow sudo to call THIS binary only, which
+# inserts validated cron entries that can only call /opt/agent-installer/bin/fire-webhook.
+# This means agents can self-schedule (recurring proactive triggers) without
+# needing access to write arbitrary cron entries — a much narrower escalation
+# surface than `sudo crontab -e`.
+#
+# Subcommands:
+#   add <agent> <cron-expr> <base64-prompt> [tag]
+#       Append a cron entry to /etc/cron.d/agent-personal-<agent>.
+#       cron-expr is the standard 5-field schedule (minute hour dom month dow).
+#       prompt is base64-encoded text — fire-webhook will decode and POST it
+#       to the webhook so the agent receives it as if from operator.
+#       tag (optional) is a short label written as a comment so the operator
+#       can identify entries later (e.g. "weekly-digest", "monday-ritual").
+#
+#   list <agent>
+#       Print all entries currently scheduled for that agent, with line numbers.
+#
+#   remove <agent> <line-number>
+#       Drop the entry at the given line number (as shown by `list`).
+#
+# Sudoers grant (in /etc/sudoers.d/agent-narrow):
+#   agent ALL=(root) NOPASSWD: /opt/agent-installer/bin/cron-add
+# This binary is owned root:root, mode 0755.
+#
+# Validation (defence-in-depth — the script enforces these even though
+# legitimate callers should never pass bad input):
+#   - <agent> must be a key under .agents in the gateway config.
+#   - <cron-expr> must match a strict 5-field cron grammar (digits, *, /, -, ,).
+#   - <base64-prompt> must decode to non-empty text.
+#   - <tag> if provided must be [a-zA-Z0-9_-]+.
+
+set -euo pipefail
+
+CRON_DIR="${CRON_DIR:-/etc/cron.d}"
+GATEWAY_CONFIG="${GATEWAY_CONFIG:-/home/agent/gateway/config.json}"
+FIRE_WEBHOOK_BIN="${FIRE_WEBHOOK_BIN:-/opt/agent-installer/bin/fire-webhook}"
+
+# Each cron field can be: number, *, range a-b, list a,b,c, step */N or a-b/N.
+# We do NOT accept @reboot/@daily aliases — too easy to misconfigure timing.
+CRON_FIELD_RE='([0-9*]+([,/-][0-9*]+)*)'
+CRON_EXPR_RE="^${CRON_FIELD_RE}( ${CRON_FIELD_RE}){4}$"
+
+usage() {
+    cat <<EOF >&2
+Usage:
+  cron-add add    <agent> <cron-expr> <base64-prompt> [tag]
+  cron-add list   <agent>
+  cron-add remove <agent> <line-number>
+
+Inserts/lists/removes entries in /etc/cron.d/agent-personal-<agent>. The
+target agent must exist in $GATEWAY_CONFIG (.agents.<name>).
+EOF
+    exit 1
+}
+
+validate_agent() {
+    local agent="$1"
+    if ! [[ "$agent" =~ ^[a-z][a-z0-9_-]{0,30}$ ]]; then
+        echo "cron-add: invalid agent name '$agent'" >&2
+        exit 1
+    fi
+    if ! jq -e ".agents.\"${agent}\"" "$GATEWAY_CONFIG" >/dev/null 2>&1; then
+        echo "cron-add: agent '$agent' not found in $GATEWAY_CONFIG" >&2
+        exit 1
+    fi
+}
+
+validate_cron_expr() {
+    local expr="$1"
+    if ! [[ "$expr" =~ $CRON_EXPR_RE ]]; then
+        echo "cron-add: invalid cron expression '$expr' (expected 5 fields: 'min hour dom month dow')" >&2
+        exit 1
+    fi
+}
+
+validate_tag() {
+    local tag="$1"
+    if ! [[ "$tag" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+        echo "cron-add: invalid tag '$tag' (only [a-zA-Z0-9_-] allowed)" >&2
+        exit 1
+    fi
+}
+
+cron_file_for() {
+    local agent="$1"
+    printf '%s/agent-personal-%s' "$CRON_DIR" "$agent"
+}
+
+ensure_cron_file() {
+    local agent="$1"
+    local file
+    file="$(cron_file_for "$agent")"
+    if [[ ! -f "$file" ]]; then
+        # Owner of the cron file must run-as. For Vesna (agent=vesna) that's
+        # root; for Leto/Tyrion/Varys/etc. that's `agent`.
+        local user="agent"
+        [[ "$agent" == "vesna" ]] && user="root"
+        cat >"$file" <<HEAD
+# Personal proactivity cron for agent: $agent
+# Managed by /opt/agent-installer/bin/cron-add. Entries below fire webhook
+# injections via /opt/agent-installer/bin/fire-webhook.
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+HOME=$([ "$user" = "root" ] && echo "/root" || echo "/home/agent")
+CRON_TZ=UTC
+HEAD
+        chmod 0644 "$file"
+        # chown best-effort: on Linux production this enforces root ownership
+        # (the binary runs as root via sudo). On non-root callers (tests on
+        # macOS, dev-mode) chown will fail — file ownership inherits from
+        # caller, which is fine for non-prod use.
+        chown root:root "$file" 2>/dev/null || true
+    fi
+}
+
+cmd_add() {
+    local agent="$1"
+    local expr="$2"
+    local b64="$3"
+    local tag="${4:-untagged}"
+
+    validate_agent "$agent"
+    validate_cron_expr "$expr"
+    validate_tag "$tag"
+
+    # Validate base64 alphabet explicitly. We can't rely on `base64 -d` to
+    # reject garbage — BSD `base64` (macOS) is lenient and silently strips
+    # invalid characters before decoding, while GNU `base64` (Linux) is
+    # strict. We check the alphabet ourselves so behaviour is identical
+    # across platforms (including CI on macOS dev machines and tests).
+    if ! [[ "$b64" =~ ^[A-Za-z0-9+/=]+$ ]]; then
+        echo "cron-add: invalid base64 prompt (chars outside [A-Za-z0-9+/=])" >&2
+        exit 1
+    fi
+    local decoded
+    decoded=$(printf '%s' "$b64" | base64 -d 2>/dev/null) || {
+        echo "cron-add: base64 decode failed" >&2
+        exit 1
+    }
+    if [[ -z "$decoded" ]]; then
+        echo "cron-add: prompt decodes to empty string" >&2
+        exit 1
+    fi
+
+    ensure_cron_file "$agent"
+    local file
+    file="$(cron_file_for "$agent")"
+
+    # Pick run-user. Vesna's personal cron runs as root; user-agents as `agent`.
+    local user="agent"
+    [[ "$agent" == "vesna" ]] && user="root"
+
+    # Append entry. Tag is in a comment line right above for readability.
+    {
+        printf '# %s [tag=%s] added=%s\n' "$agent" "$tag" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        printf '%s %s %s %s %s\n' "$expr" "$user" "$FIRE_WEBHOOK_BIN" "$agent" "$b64"
+    } >>"$file"
+
+    # Notify cron to reload (newer crons auto-detect, but `service cron reload`
+    # is a no-op safety on systems where inotify isn't enabled).
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl reload cron 2>/dev/null || systemctl restart cron 2>/dev/null || true
+    fi
+
+    echo "cron-add: added '$tag' for $agent at '$expr' → $file"
+}
+
+cmd_list() {
+    local agent="$1"
+    validate_agent "$agent"
+    local file
+    file="$(cron_file_for "$agent")"
+    if [[ ! -f "$file" ]]; then
+        echo "cron-add: no entries (file $file does not exist yet)"
+        return 0
+    fi
+    grep -nE '^[0-9*]' "$file" || echo "cron-add: no schedule lines yet"
+}
+
+cmd_remove() {
+    local agent="$1"
+    local lineno="$2"
+    validate_agent "$agent"
+    if ! [[ "$lineno" =~ ^[0-9]+$ ]]; then
+        echo "cron-add: line number must be numeric (got '$lineno')" >&2
+        exit 1
+    fi
+    local file
+    file="$(cron_file_for "$agent")"
+    [[ -f "$file" ]] || { echo "cron-add: file $file not found" >&2; exit 1; }
+
+    # Remove the schedule line at <lineno> AND the comment line right above it
+    # (which we wrote at add-time). We re-emit the file without those two lines.
+    local prev=$((lineno - 1))
+    local tmp
+    tmp="$(mktemp)"
+    awk -v drop1="$prev" -v drop2="$lineno" 'NR != drop1 && NR != drop2' "$file" >"$tmp"
+    install -m 0644 -o root -g root "$tmp" "$file"
+    rm -f "$tmp"
+
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl reload cron 2>/dev/null || systemctl restart cron 2>/dev/null || true
+    fi
+    echo "cron-add: removed line $lineno from $file"
+}
+
+cmd="${1:-}"
+case "$cmd" in
+    add)    shift; [[ $# -ge 3 ]] || usage; cmd_add "$@" ;;
+    list)   shift; [[ $# -ge 1 ]] || usage; cmd_list "$@" ;;
+    remove) shift; [[ $# -ge 2 ]] || usage; cmd_remove "$@" ;;
+    ""|-h|--help) usage ;;
+    *) echo "cron-add: unknown subcommand '$cmd'" >&2; usage ;;
+esac

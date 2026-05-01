@@ -62,7 +62,18 @@ Cmnd_Alias AGENT_APT = \\
     /usr/bin/apt, /usr/bin/apt *, \\
     /usr/bin/apt-get, /usr/bin/apt-get *
 
-${AGENT_USER} ALL=(root) NOPASSWD: AGENT_SYSTEMCTL, AGENT_JOURNAL, AGENT_APT
+# Self-scheduling proactivity — agent calls cron-add to insert validated
+# entries into /etc/cron.d/agent-personal-<name>. The binary is owned root,
+# parses args, and only writes cron lines that invoke fire-webhook (which
+# is itself a fixed-shape curl wrapper). Net escalation: agent can schedule
+# webhook injections to its own / sibling agents' queues. Cannot run
+# arbitrary commands on cron schedule.
+Cmnd_Alias AGENT_PROACTIVITY = \\
+    /opt/agent-installer/bin/cron-add add *, \\
+    /opt/agent-installer/bin/cron-add list *, \\
+    /opt/agent-installer/bin/cron-add remove *
+
+${AGENT_USER} ALL=(root) NOPASSWD: AGENT_SYSTEMCTL, AGENT_JOURNAL, AGENT_APT, AGENT_PROACTIVITY
 SUDOERS
 
     if ! visudo -cf "$tmp" >/dev/null 2>&1; then

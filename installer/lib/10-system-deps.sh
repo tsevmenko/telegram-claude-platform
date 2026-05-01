@@ -14,7 +14,7 @@ step_main() {
         build-essential \
         systemd \
         logrotate \
-        cron \
+        cron at \
         ffmpeg sox \
         sqlite3
 
@@ -46,8 +46,10 @@ step_main() {
     py_ver="$(python3 --version 2>&1 | awk '{print $2}')"
     ok "Base packages installed (python3=${py_ver})."
 
-    # Ensure cron service is enabled now — minimal Ubuntu images sometimes
-    # ship cron without the unit started.
+    # Ensure cron and atd are enabled — minimal Ubuntu images sometimes
+    # ship them without the units started. atd is required for the
+    # `self-schedule once` skill (one-shot reminders via at).
+    systemctl enable --now atd 2>/dev/null || true
     systemctl enable --now cron 2>/dev/null \
         || warn "cron service not started — memory rotation will run after next reboot."
 }
