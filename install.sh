@@ -41,6 +41,7 @@ else
         40-secrets
         70-openviking
         72-playwright
+        73-clickup
         50-vesna
         55-plugins
         60-user-gateway

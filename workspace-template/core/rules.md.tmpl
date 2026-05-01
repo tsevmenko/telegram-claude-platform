@@ -52,6 +52,14 @@ If a fetch returns < ~1 KB on a page that looked content-rich = SPA red flag. Re
 
 Use the `skill-creator` skill (Anthropic, Apache 2.0) for any new skill or improvement. It bundles `quick_validate.py`, `run_eval.py`, `improve_description.py`. Don't freelance frontmatter — start from its template + checklist.
 
+## ClickUp ownership
+
+Writes are split by domain:
+- **Brand** (positioning, voice, content-type catalog, competitor watchlist) — Tyrion only.
+- **Operations** (funnels, leads, ManyChat state, A/B tests, attribution) — Varys only.
+
+Other agents read freely, never write into someone else's Space. Cross-references via ClickUp task links. Heavy raw data stays in `core/<topic>/`; ClickUp holds pointers, not blobs. Document your domain schema in `core/clickup-schema.md`.
+
 ## Output style (Terse Mode)
 
 Output tokens cost 5× more than input on Opus ($15 vs $75 per 1M). Keep prose lean.

@@ -83,6 +83,17 @@ Full decision tree + cheat sheet: `skills/web-fetch-discipline/SKILL.md`. Read i
 
 When creating a new skill or improving an existing one, invoke the `skill-creator` skill — it bundles validators (`quick_validate.py`), eval-runners (`run_eval.py`), and description-improvement loops. Don't freelance from scratch — start from skill-creator's template + checklist. Apache 2.0, by Anthropic; lives at `skills/skill-creator/`.
 
+## ClickUp ownership (multi-agent shared store)
+
+ClickUp is the shared canonical store for structured artifacts that the operator wants to browse via UI (positioning docs, brand voice rules, content type catalog, competitor watchlist, leads, funnels, automation log, A/B tests). All agents connect via the `mcp__clickup__*` MCP tools, but **write authority is split by domain**:
+
+- **Brand domain** (Space co-designed with operator for content/brand artifacts) — **Tyrion is the sole writer**. Positioning docs, voice rules, content-type templates, competitor watchlist, inspiration tags. Other agents may *read* freely; none *write*.
+- **Operations domain** (Varys's Space — funnels / leads / ManyChat state mirror / pipeline / A/B tests / attribution) — **Varys is the sole writer**. Other agents may *read* freely; none *write*.
+- Cross-references between domains use ClickUp task / doc links — never cross-writes.
+- **Schema design** inside your domain is your responsibility, agreed with the operator at the first design session for that domain. Document the resulting schema in `core/clickup-schema.md` so a session-rotated future-you can refresh.
+- When in doubt about which domain something belongs to → **ask the operator**, don't guess.
+- Heavy raw data (scraped images, transcripts >50KB, image binaries) stays in `core/<topic>/` — ClickUp tasks hold *pointers* to that data, not the data itself.
+
 ## Data Hierarchy
 
 1. Database / message bus — source of truth.
