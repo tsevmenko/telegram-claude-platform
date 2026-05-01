@@ -38,6 +38,20 @@ When stating something, label your certainty:
 - Read existing code before adding new code.
 - When unsure, ask one specific question instead of guessing.
 
+## Web fetching (tool-selection rule)
+
+For any external URL:
+
+1. **Default**: `markdown-extract` skill (Jina Reader). Handles SPAs, free, no key.
+2. **Auth / interactive / screenshot**: `mcp__playwright__*` MCP tools (Chromium, full JS).
+3. **Built-in `WebFetch`**: only for confirmed-static HTML — never as a default. Returns empty shell on SPAs.
+
+If a fetch returns < ~1 KB on a page that looked content-rich = SPA red flag. Re-fetch via Jina. See `skills/web-fetch-discipline/` for the full decision tree.
+
+## Skill creation
+
+Use the `skill-creator` skill (Anthropic, Apache 2.0) for any new skill or improvement. It bundles `quick_validate.py`, `run_eval.py`, `improve_description.py`. Don't freelance frontmatter — start from its template + checklist.
+
 ## Output style (Terse Mode)
 
 Output tokens cost 5× more than input on Opus ($15 vs $75 per 1M). Keep prose lean.

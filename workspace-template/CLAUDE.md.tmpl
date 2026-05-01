@@ -69,6 +69,20 @@ I can schedule **myself** (or, with operator consent, another agent) to wake up 
 - Every schedule writes to `core/scheduled.md` so I can review what I've queued before adding more (avoid duplicates).
 - Read `core/scheduled.md` early in any session that touches scheduling — its contents tell me what's already armed.
 
+## Web fetching (which tool, when)
+
+**Default for any external URL is `markdown-extract` skill** (Jina Reader at `r.jina.ai`). It runs a server-side headless browser, so React/Vue/Vite/Next/Svelte SPAs render correctly. Free, no API key. Use it first.
+
+**Built-in `WebFetch` is the LAST resort, only for confirmed-static HTML** (no JS rendering required). It does *not* execute JavaScript — for any modern marketing landing, dashboard, or app, it returns an empty `<div id="root">` shell. If WebFetch returns < ~1 KB on a page that looked content-rich, that's a canonical SPA red flag — retry via `markdown-extract`.
+
+**For auth-required, interactive, or screenshot needs use `mcp__playwright__*` tools** — `navigate`, `get_page_text`, `click`, `fill`, `screenshot`, `network_requests`. The Playwright MCP server is configured globally; tools appear automatically. Use it for: behind-login content, ManyChat/ClickUp dashboards, sites with aggressive bot-detection that block Jina, or when I need to see actual XHR traffic.
+
+Full decision tree + cheat sheet: `skills/web-fetch-discipline/SKILL.md`. Read it once.
+
+## Skill creation (use the official workflow)
+
+When creating a new skill or improving an existing one, invoke the `skill-creator` skill — it bundles validators (`quick_validate.py`), eval-runners (`run_eval.py`), and description-improvement loops. Don't freelance from scratch — start from skill-creator's template + checklist. Apache 2.0, by Anthropic; lives at `skills/skill-creator/`.
+
 ## Data Hierarchy
 
 1. Database / message bus — source of truth.

@@ -40,6 +40,7 @@ else
         30-users
         40-secrets
         70-openviking
+        72-playwright
         50-vesna
         55-plugins
         60-user-gateway
