@@ -27,6 +27,7 @@ _ALLOWLIST_NAMES = {
     "test_p3a.py",                    # uses 123:fake style placeholders
     "test_p3d.py",                    # exercises extended mask_secrets() with fake payloads
     "test_boundary.py",               # exercises mask_secrets() with fake ghp_ payloads
+    "test_v046_state_backup.py",      # exercises secret-scanner.sh with fake sample payloads
 }
 
 _ALLOWLIST_DIRS = {

@@ -49,6 +49,7 @@ else
         85-cron
         90-webhook-token
         95-personal-cron
+        98-state-backup
         99-self-check
     )
 fi

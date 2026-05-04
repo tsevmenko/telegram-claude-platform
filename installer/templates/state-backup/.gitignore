@@ -1,0 +1,57 @@
+# === SECRETS — never commit ===
+**/secrets/
+*.token
+*.key
+*.pem
+*.crt
+**/*.credentials*
+.env
+.env.*
+**/.env
+**/webhook-token.txt
+**/clickup.token
+**/scrapecreators.key
+**/groq.key
+**/openviking.key
+**/manychat.token
+**/.credentials.json
+
+# === Claude CLI internals — don't mirror ===
+**/.claude/projects/
+**/.claude/sessions/
+**/.claude/shell-snapshots/
+**/.claude/statsig/
+**/.claude/todos/
+**/.claude/ide/
+**/.claude/mcp-needs-auth-cache.json
+**/sessions/
+
+# === Build artefacts / caches ===
+**/node_modules/
+**/.venv/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+**/.cache/
+
+# === Logs (raw, voluminous, may contain pasted secrets) ===
+**/logs/raw/
+**/logs/cron/
+**/logs/openviking/
+**/logs/activity/
+*.log
+*.jsonl
+
+# === Deprecated artefacts ===
+*.deprecated.*
+
+# === OS / editor ===
+.DS_Store
+*.swp
+*.bak
+.idea/
+.vscode/
+
+# === Backup script self-output ===
+.last-run-status.json
