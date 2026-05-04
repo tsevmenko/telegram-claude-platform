@@ -85,11 +85,20 @@ def test_installer_step_73_clickup_exists() -> None:
     assert p.is_file()
     text = p.read_text()
     assert "step_main()" in text
-    assert "@taazkareem/clickup-mcp-server" in text
-    assert "register_clickup_mcp_for" in text
-    # Both root and agent users registered.
-    assert "register_clickup_mcp_for root" in text
-    assert "register_clickup_mcp_for agent" in text
+    # v0.4.5 swapped paywalled @taazkareem for MIT @nazruden/clickup-server
+    # (taazkareem went premium-paywall in v0.14, blocked basic list_spaces).
+    assert "@nazruden/clickup-server" in text
+    # The full taazkareem package name must NOT appear (would mean we still
+    # install it). Commentary mentioning it for historical context is OK.
+    assert "@taazkareem/clickup-mcp-server" not in text, (
+        "the paywalled taazkareem package should no longer be installed; "
+        "use @nazruden/clickup-server (MIT) instead"
+    )
+    assert "npm install --silent @taazkareem" not in text
+    # Register helper for both users.
+    assert "register_mcp_for_user" in text
+    assert "register_mcp_for_user root" in text
+    assert "register_mcp_for_user agent" in text
 
 
 def test_install_sh_registers_step_73() -> None:
@@ -102,26 +111,34 @@ def test_install_sh_registers_step_73() -> None:
 
 
 def test_installer_step_73_uses_wrapper_pattern() -> None:
-    """Token must NOT be inlined in mcp.json (mode 0644). Wrapper script
-    reads it from chmod-600 secrets file and exports as env. Pin this
-    architecture so a future "simplification" doesn't accidentally leak."""
+    """Token must NOT be inlined in mcp.json. Wrapper script reads it
+    from chmod-600 secrets file and exports as env. Pin this architecture
+    so a future "simplification" doesn't accidentally leak."""
     text = (REPO_ROOT / "installer" / "lib" / "73-clickup.sh").read_text()
     # write_wrapper helper present.
     assert "write_wrapper" in text
     # Wrapper reads from secrets file path.
     assert "/home/agent/.claude-lab/shared/secrets/clickup.token" in text
-    # The mcp.json entry uses the wrapper as `command`, no token in JSON.
-    # We can verify this by checking that the registration helper does NOT
-    # write CLICKUP_API_KEY into the JSON.
-    assert "CLICKUP_API_KEY" not in _registration_block(text), (
-        "Registration helper should not put API key into mcp.json — "
-        "use the wrapper script which reads from secrets file."
+    # Nazruden uses CLICKUP_PERSONAL_TOKEN (not CLICKUP_API_KEY which was
+    # taazkareem's env). We expect the wrapper to set this.
+    assert "CLICKUP_PERSONAL_TOKEN" in text
+    # The registration helper must call native `claude mcp add`, NOT
+    # write API token into ~/.claude.json directly.
+    reg_block = _registration_block(text)
+    assert "claude mcp add" in reg_block, (
+        "Registration must use native `claude mcp add`, not jq-merge "
+        "into a config file (claude CLI 2.x reads from ~/.claude.json, "
+        "not ~/.claude/mcp.json)"
+    )
+    assert "CLICKUP_PERSONAL_TOKEN" not in reg_block, (
+        "Token must not appear in registration helper — wrapper reads it "
+        "from disk at runtime instead."
     )
 
 
 def _registration_block(text: str) -> str:
-    """Extract the register_clickup_mcp_for function body."""
-    start = text.find("register_clickup_mcp_for() {")
+    """Extract the register_mcp_for_user function body."""
+    start = text.find("register_mcp_for_user() {")
     if start == -1:
         return ""
     # Find matching closing brace at column 0.
@@ -129,13 +146,14 @@ def _registration_block(text: str) -> str:
     return text[start:end] if end != -1 else text[start:]
 
 
-def test_installer_step_73_resolves_team_id_from_api() -> None:
-    """When CLICKUP_TEAM_ID isn't pre-set, the installer must auto-resolve
-    it via ClickUp's /team API endpoint — saves operator a manual lookup.
-    Override via env still works for multi-team setups."""
+def test_installer_step_73_no_team_id_lookup_needed() -> None:
+    """Nazruden uses Personal API Token only (CLICKUP_PERSONAL_TOKEN env).
+    Unlike taazkareem it does NOT require explicit CLICKUP_TEAM_ID — it
+    queries /team itself when needed. So our installer step doesn't need
+    the auto-resolve-team logic anymore."""
     text = (REPO_ROOT / "installer" / "lib" / "73-clickup.sh").read_text()
-    assert "api.clickup.com/api/v2/team" in text
-    assert "CLICKUP_TEAM_ID" in text
+    # CLICKUP_TEAM_ID lookup logic should NOT be present in v0.4.5+.
+    assert "auto-resolve" not in text or "Personal API Token" in text
 
 
 def test_installer_step_73_skips_gracefully_if_token_missing() -> None:

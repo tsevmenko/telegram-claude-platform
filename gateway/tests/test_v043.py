@@ -144,10 +144,12 @@ def test_installer_step_72_playwright_exists() -> None:
     # `<path>/playwright" install chromium`, so we just check the install
     # action is invoked.
     assert "install chromium" in text
-    assert "register_playwright_mcp_for" in text
+    # v0.4.5: helper renamed from register_playwright_mcp_for to the
+    # generic register_mcp_for_user (uses native `claude mcp add` now).
+    assert "register_mcp_for_user" in text
     # Must register MCP for both root and agent users.
-    assert "register_playwright_mcp_for root" in text
-    assert "register_playwright_mcp_for agent" in text
+    assert "register_mcp_for_user root" in text
+    assert "register_mcp_for_user agent" in text
 
 
 def test_install_sh_registers_step_72() -> None:

@@ -79,21 +79,34 @@ def test_instagram_analytics_skill_stub_exists() -> None:
     )
 
 
-def test_instagram_skill_marked_as_stub() -> None:
+def test_instagram_skill_no_longer_stub() -> None:
+    """v0.4.5: stub graduated. Tyrion built a fully working
+    ScrapeCreators-backed skill on his VPS (analyze.sh, bulk-fetch.sh,
+    posts-fetch.sh, reel-details.sh, fetch-author-week.sh). We pulled
+    the working skill into source control. The frontmatter must NOT
+    advertise status:stub anymore — it would mislead the agent."""
     skill_md = SKILLS_DIR / "instagram-analytics" / "SKILL.md"
     text = skill_md.read_text(encoding="utf-8")
-    assert "status: stub" in text, (
-        "Stub skills must self-identify so installers / scanners can filter them"
+    assert "status: stub" not in text, (
+        "skill is no longer a stub; remove the marker from frontmatter"
     )
+    # Real skill must list actual scripts that exist.
+    scripts_dir = SKILLS_DIR / "instagram-analytics" / "scripts"
+    for must_exist in ("bulk-fetch.sh", "analyze.sh", "reel-details.sh"):
+        assert (scripts_dir / must_exist).is_file(), (
+            f"{must_exist} missing — skill incomplete"
+        )
 
 
-def test_instagram_skill_does_not_claim_hashtag_support() -> None:
-    """ScrapeCreators doesn't have IG hashtag endpoints; the SKILL.md must
-    surface that limitation so an over-eager Claude doesn't promise it."""
+def test_instagram_skill_documents_scope_limits() -> None:
+    """The skill must surface what it CAN'T do so an over-eager Claude
+    doesn't promise things ScrapeCreators's IG endpoints can't deliver
+    (private profiles, stories, hashtag aggregation, etc.). Pulled from
+    Tyrion's hand-written 'What this skill does NOT do' section."""
     skill_md = SKILLS_DIR / "instagram-analytics" / "SKILL.md"
     text = skill_md.read_text(encoding="utf-8").lower()
-    assert "hashtag" in text and ("doesn't" in text or "don't" in text or "not" in text), (
-        "Instagram skill must explicitly disclaim hashtag support"
+    assert "does not" in text or "cannot" in text or "no login" in text, (
+        "skill must declare its capability boundaries"
     )
 
 

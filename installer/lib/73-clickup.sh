@@ -1,30 +1,43 @@
 #!/usr/bin/env bash
-# Install community @taazkareem/clickup-mcp-server system-wide and register
-# the MCP server in both root's and agent's mcp.json. Wraps the binary in a
-# small shell script that reads the API key from a chmod-600 secrets file
-# (rather than inlining it in mcp.json which is mode 0644).
+# Install community @nazruden/clickup-server (MIT) system-wide and register
+# the MCP server for both root + agent users via `claude mcp add --scope user`.
+# Wraps the binary in a small shell script that reads the Personal API
+# Token from a chmod-600 secrets file (rather than inlining it in any
+# config file).
 #
-# Why community over official ClickUp MCP: rate limits. Official caps Free
-# plan at 50 calls/24h and Unlimited at 300/24h. The community server uses
-# the regular ClickUp REST API directly, where rate limits are far more
-# generous (~100 req/min). For an actively-used multi-agent setup, those
-# limits are the difference between "works" and "constantly throttled".
+# Why @nazruden over @taazkareem (the package we used in v0.4.4):
+# taazkareem went paywall in v0.14 — the basic `list_spaces` call now
+# returns a license-error and the server's `instructions` field contains
+# a literal prompt-injection telling the AI to "guide the user to
+# purchase links". That's manipulative and breaks our sole-writer ClickUp
+# discipline. Tyrion caught both flags 2026-05-01.
+# @nazruden/clickup-server is MIT-licensed, source-readable, exposes 31
+# tools (create/get/update/delete across spaces, folders, lists, tasks,
+# docs, doc pages, custom fields, views), no paywall, no injection.
+#
+# Why `claude mcp add` over the previous jq-merge into ~/.claude/mcp.json:
+# we discovered (via Tyrion's diagnosis) that claude CLI 2.x reads MCP
+# config from `~/.claude.json` (a single dot-file in $HOME), NOT from
+# `~/.claude/mcp.json` (a path-with-subdir). The native `claude mcp add`
+# subcommand writes to the right file and handles validation. Direct
+# jq-merge into the wrong file silently failed to load any MCP server
+# we registered through v0.4.3 / v0.4.4.
 
-CLICKUP_DIR="${CLICKUP_DIR:-/opt/clickup-mcp}"
+CLICKUP_DIR="${CLICKUP_DIR:-/opt/clickup-mcp-nazruden}"
 WRAPPER="${CLICKUP_DIR}/run.sh"
 TOKEN_FILE="${CLICKUP_TOKEN_FILE:-/home/agent/.claude-lab/shared/secrets/clickup.token}"
 
 step_main() {
     install -d -m 0755 -o root -g root "$CLICKUP_DIR"
 
-    if [[ ! -d "${CLICKUP_DIR}/node_modules/@taazkareem/clickup-mcp-server" ]]; then
-        log "Installing @taazkareem/clickup-mcp-server"
+    if [[ ! -d "${CLICKUP_DIR}/node_modules/@nazruden/clickup-server" ]]; then
+        log "Installing @nazruden/clickup-server"
         ( cd "$CLICKUP_DIR" && {
             [[ -f package.json ]] || npm init -y >/dev/null 2>&1
-            npm install --silent @taazkareem/clickup-mcp-server@latest 2>&1 | tail -3
+            npm install --silent @nazruden/clickup-server@latest 2>&1 | tail -3
           } )
     else
-        log "@taazkareem/clickup-mcp-server already installed at ${CLICKUP_DIR}"
+        log "@nazruden/clickup-server already installed at ${CLICKUP_DIR}"
     fi
 
     chmod -R a+rX "${CLICKUP_DIR}/node_modules"
@@ -35,73 +48,60 @@ step_main() {
         return 0
     fi
 
-    # Resolve operator's primary CLICKUP_TEAM_ID via the API. If multiple
-    # teams exist we take the first; operator can override via env var
-    # CLICKUP_TEAM_ID before re-running this step.
-    local team_id="${CLICKUP_TEAM_ID:-}"
-    if [[ -z "$team_id" ]]; then
-        local token; token="$(cat "$TOKEN_FILE")"
-        team_id="$(curl -fsS -H "Authorization: ${token}" \
-            https://api.clickup.com/api/v2/team 2>/dev/null \
-            | jq -r '.teams[0].id // empty' 2>/dev/null)"
-        if [[ -z "$team_id" ]]; then
-            warn "Could not auto-resolve CLICKUP_TEAM_ID via API. Set it explicitly and re-run."
-            return 0
-        fi
-        log "Auto-resolved primary CLICKUP_TEAM_ID=${team_id}"
+    write_wrapper
+
+    # Sanity smoke before registering — refuse to register a wrapper that
+    # doesn't even pass syntax check, otherwise agents will fail silently
+    # at session start.
+    if ! bash -n "$WRAPPER"; then
+        err "wrapper script $WRAPPER failed bash -n; aborting"
+        return 1
     fi
 
-    write_wrapper "$team_id"
-    register_clickup_mcp_for root  /root/.claude/mcp.json
-    register_clickup_mcp_for agent /home/agent/.claude/mcp.json
+    register_mcp_for_user root  "$WRAPPER"
+    register_mcp_for_user agent "$WRAPPER"
 
-    ok "ClickUp MCP installed; wrapper at ${WRAPPER}; registered for root + agent."
+    ok "ClickUp MCP (Nazruden) installed; wrapper at ${WRAPPER}; registered for root + agent."
 }
 
 write_wrapper() {
-    local team_id="$1"
     cat >"$WRAPPER" <<EOR
 #!/usr/bin/env bash
-# Wrapper for the ClickUp MCP server. Reads the API key from a chmod-600
-# secrets file rather than inlining it in mcp.json (which is mode 0644).
-# Workspace ID (CLICKUP_TEAM_ID) is hardcoded here — change it if the
-# operator switches primary workspace, or override via the env var.
+# Wrapper for @nazruden/clickup-server. Reads the ClickUp Personal API
+# Token from a chmod-600 secrets file rather than inlining it in
+# ~/.claude.json (which is readable by the owning user). Stdio MCP, runs
+# fresh per-session.
 set -e
-CLICKUP_API_KEY=\$(cat ${TOKEN_FILE})
-export CLICKUP_API_KEY
-export CLICKUP_TEAM_ID=\${CLICKUP_TEAM_ID:-${team_id}}
-export ENABLE_STDIO=true
-exec /usr/bin/node ${CLICKUP_DIR}/node_modules/@taazkareem/clickup-mcp-server/build/index.js "\$@"
+CLICKUP_PERSONAL_TOKEN=\$(cat ${TOKEN_FILE})
+export CLICKUP_PERSONAL_TOKEN
+exec /usr/bin/node ${CLICKUP_DIR}/node_modules/@nazruden/clickup-server/dist/index.js "\$@"
 EOR
     chmod 0755 "$WRAPPER"
     chown root:root "$WRAPPER"
 }
 
-# register_clickup_mcp_for USER MCP_JSON_PATH
-# Idempotently merge a "clickup" entry into the existing mcpServers map.
-register_clickup_mcp_for() {
-    local user="$1" mcp_path="$2"
-    local mcp_dir; mcp_dir="$(dirname "$mcp_path")"
-    install -d -m 0700 -o "$user" -g "$user" "$mcp_dir"
+# register_mcp_for_user USER COMMAND
+# Use `claude mcp add --scope user` (the native subcommand) to register a
+# stdio MCP server in the user's ~/.claude.json. Idempotent: removes any
+# pre-existing entry with the same name first, then re-adds.
+register_mcp_for_user() {
+    local user="$1" cmd="$2"
 
-    local tmp; tmp="$(mktemp)"; TMPFILES+=("$tmp")
-
-    if [[ -f "$mcp_path" ]]; then
-        if jq --arg cmd "$WRAPPER" \
-              '.mcpServers = ((.mcpServers // {}) +
-                  {"clickup": {"command": $cmd, "args": []}})' \
-              "$mcp_path" >"$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
-            install -m 0644 -o "$user" -g "$user" "$tmp" "$mcp_path"
-            log "Registered clickup MCP for ${user} → ${mcp_path}"
-        else
-            warn "jq merge of ${mcp_path} failed; leaving file alone."
-        fi
+    # `claude mcp` always operates on the invoking user's config. We use
+    # sudo -u to switch user, with -H to set HOME so claude finds the
+    # right dotfile.
+    local sudo_pfx
+    if [[ "$user" == "root" ]]; then
+        sudo_pfx=""
     else
-        if jq -n --arg cmd "$WRAPPER" \
-                '{mcpServers: {clickup: {command: $cmd, args: []}}}' >"$tmp" 2>/dev/null \
-                && [[ -s "$tmp" ]]; then
-            install -m 0644 -o "$user" -g "$user" "$tmp" "$mcp_path"
-            log "Created MCP config for ${user} at ${mcp_path}"
-        fi
+        sudo_pfx="sudo -u $user -H"
+    fi
+
+    # Idempotent remove. Ignore errors (entry might not exist yet).
+    $sudo_pfx /usr/bin/claude mcp remove clickup -s user >/dev/null 2>&1 || true
+    if $sudo_pfx /usr/bin/claude mcp add --scope user clickup "$cmd" >/dev/null 2>&1; then
+        log "Registered clickup MCP for ${user}"
+    else
+        warn "claude mcp add failed for ${user}; check 'claude mcp list -s user' manually"
     fi
 }

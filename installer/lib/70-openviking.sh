@@ -76,45 +76,47 @@ step_main() {
     log "No 'openviking' binary found — installing the bundled openviking-lite."
     install_lite
     deploy_systemd_unit "${OV_VENV}/bin/openviking-lite"
-    register_mcp_for root  /root/.claude/mcp.json
-    register_mcp_for agent /home/agent/.claude/mcp.json
+    register_mcp_for_user root  /root/secrets/openviking.key
+    register_mcp_for_user agent /home/agent/secrets/openviking.key
     ok "OpenViking-lite deployed (loopback 127.0.0.1:${OV_PORT})."
 }
 
-# register_mcp_for USER MCP_JSON_PATH
-# Adds an "openviking" MCP server entry pointing at openviking-lite-mcp.
-register_mcp_for() {
-    local user="$1" mcp_path="$2"
-    local mcp_dir; mcp_dir="$(dirname "$mcp_path")"
-    install -d -m 0700 -o "$user" -g "$user" "$mcp_dir"
-
+# register_mcp_for_user USER USER_READABLE_KEY_FILE
+# Registers the "openviking" MCP server for the given Linux user via the
+# native `claude mcp add --scope user` subcommand. Why native and not
+# jq-merge into ~/.claude/mcp.json: claude CLI 2.x reads MCP config from
+# ~/.claude.json (single dot-file in $HOME), NOT from ~/.claude/mcp.json.
+# Direct jq-merge into the wrong file silently failed to load any MCP
+# we registered through v0.4.3 / v0.4.4. Tyrion's diagnosis 2026-05-01.
+#
+# Each user gets a different OV_KEY_FILE because the canonical key at
+# /etc/openviking/key is mode 0640 owner=root:openviking — agent user
+# can't read it. We install per-user copies in the user's secrets dir
+# in 70-openviking step earlier.
+register_mcp_for_user() {
+    local user="$1" key_file="$2"
     local exec="${OV_VENV}/bin/openviking-lite-mcp"
     [[ -x "$exec" ]] || { warn "MCP exec missing at ${exec}"; return 0; }
 
-    local tmp; tmp="$(mktemp)"; TMPFILES+=("$tmp")
-    if [[ -f "$mcp_path" ]]; then
-        if jq --arg cmd "$exec" --arg key "$OV_KEY_FILE" \
-              '.mcpServers = ((.mcpServers // {}) +
-                  {"openviking": {"command": $cmd, "args": [],
-                                  "env": {"OV_HOST": "http://127.0.0.1:1933",
-                                          "OV_KEY_FILE": $key,
-                                          "OV_ACCOUNT": "default"}}})' \
-              "$mcp_path" >"$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
-            install -m 0644 -o "$user" -g "$user" "$tmp" "$mcp_path"
-            log "Registered openviking MCP for ${user} → ${mcp_path}"
-        else
-            warn "jq merge of ${mcp_path} failed; leaving file alone."
-        fi
+    local sudo_pfx
+    if [[ "$user" == "root" ]]; then
+        sudo_pfx=""
     else
-        if jq -n --arg cmd "$exec" --arg key "$OV_KEY_FILE" \
-                '{mcpServers: {openviking: {command: $cmd, args: [],
-                                            env: {OV_HOST: "http://127.0.0.1:1933",
-                                                  OV_KEY_FILE: $key,
-                                                  OV_ACCOUNT: "default"}}}}' >"$tmp" 2>/dev/null \
-                && [[ -s "$tmp" ]]; then
-            install -m 0644 -o "$user" -g "$user" "$tmp" "$mcp_path"
-            log "Created MCP config for ${user} at ${mcp_path}"
-        fi
+        sudo_pfx="sudo -u $user -H"
+    fi
+
+    # Idempotent remove first, then add. claude mcp add appends -e KEY=VALUE
+    # entries for each --env flag; we pass three (OV_HOST, OV_KEY_FILE,
+    # OV_ACCOUNT) so the server boots without needing an external dotenv.
+    $sudo_pfx /usr/bin/claude mcp remove openviking -s user >/dev/null 2>&1 || true
+    if $sudo_pfx /usr/bin/claude mcp add --scope user \
+            -e OV_HOST=http://127.0.0.1:1933 \
+            -e OV_KEY_FILE="$key_file" \
+            -e OV_ACCOUNT=default \
+            openviking "$exec" >/dev/null 2>&1; then
+        log "Registered openviking MCP for ${user}"
+    else
+        warn "claude mcp add openviking failed for ${user}; check manually"
     fi
 }
 

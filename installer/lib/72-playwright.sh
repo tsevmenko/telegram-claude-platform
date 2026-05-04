@@ -40,41 +40,41 @@ step_main() {
         return 1
     fi
 
-    register_playwright_mcp_for root  /root/.claude/mcp.json
-    register_playwright_mcp_for agent /home/agent/.claude/mcp.json
+    register_mcp_for_user root
+    register_mcp_for_user agent
 
     ok "Playwright + @playwright/mcp installed; MCP registered for root + agent."
 }
 
-# register_playwright_mcp_for USER MCP_JSON_PATH
-# Idempotently merge a "playwright" entry into the existing mcpServers map.
-register_playwright_mcp_for() {
-    local user="$1" mcp_path="$2"
-    local mcp_dir; mcp_dir="$(dirname "$mcp_path")"
-    install -d -m 0700 -o "$user" -g "$user" "$mcp_dir"
+# register_mcp_for_user USER
+# Registers "playwright" MCP server for the given Linux user via the native
+# `claude mcp add --scope user` subcommand. Why native and not jq-merge:
+# claude CLI 2.x reads MCP config from ~/.claude.json (single dot-file in
+# $HOME), NOT from ~/.claude/mcp.json. Direct jq-merge into the wrong
+# file silently failed to load any MCP we registered through v0.4.3 /
+# v0.4.4. Tyrion's diagnosis 2026-05-01.
+register_mcp_for_user() {
+    local user="$1"
 
-    local tmp; tmp="$(mktemp)"; TMPFILES+=("$tmp")
-
-    if [[ -f "$mcp_path" ]]; then
-        if jq --arg cli "$MCP_CLI" --arg bp "$PLAYWRIGHT_BROWSERS_PATH" \
-              '.mcpServers = ((.mcpServers // {}) +
-                  {"playwright": {"command": "node",
-                                  "args": [$cli, "--browser=chromium", "--headless", "--isolated"],
-                                  "env": {"PLAYWRIGHT_BROWSERS_PATH": $bp}}})' \
-              "$mcp_path" >"$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
-            install -m 0644 -o "$user" -g "$user" "$tmp" "$mcp_path"
-            log "Registered playwright MCP for ${user} → ${mcp_path}"
-        else
-            warn "jq merge of ${mcp_path} failed; leaving file alone."
-        fi
+    local sudo_pfx
+    if [[ "$user" == "root" ]]; then
+        sudo_pfx=""
     else
-        if jq -n --arg cli "$MCP_CLI" --arg bp "$PLAYWRIGHT_BROWSERS_PATH" \
-                '{mcpServers: {playwright: {command: "node",
-                                            args: [$cli, "--browser=chromium", "--headless", "--isolated"],
-                                            env: {PLAYWRIGHT_BROWSERS_PATH: $bp}}}}' >"$tmp" 2>/dev/null \
-                && [[ -s "$tmp" ]]; then
-            install -m 0644 -o "$user" -g "$user" "$tmp" "$mcp_path"
-            log "Created MCP config for ${user} at ${mcp_path}"
-        fi
+        sudo_pfx="sudo -u $user -H"
+    fi
+
+    # Idempotent remove first, then add with all the args inline. The
+    # @playwright/mcp cli accepts a chain of flags; we pass them as
+    # positional args after the command name (claude mcp add accepts
+    # them as `args` after the command).
+    $sudo_pfx /usr/bin/claude mcp remove playwright -s user >/dev/null 2>&1 || true
+    if $sudo_pfx /usr/bin/claude mcp add --scope user \
+            -e PLAYWRIGHT_BROWSERS_PATH="$PLAYWRIGHT_BROWSERS_PATH" \
+            playwright /usr/bin/node \
+            -- "$MCP_CLI" --browser=chromium --headless --isolated \
+            >/dev/null 2>&1; then
+        log "Registered playwright MCP for ${user}"
+    else
+        warn "claude mcp add playwright failed for ${user}; check manually"
     fi
 }
